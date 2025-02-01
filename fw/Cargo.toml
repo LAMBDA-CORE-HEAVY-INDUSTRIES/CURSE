@@ -19,3 +19,8 @@ features = ["stm32f411"]
 
 [profile.dev]
 panic="abort"
+
+[[bin]]
+name = "curse"
+test = false
+bench = false
