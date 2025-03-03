@@ -23,5 +23,6 @@ panic="abort"
 
 [[bin]]
 name = "curse"
+path = "src/main.rs"
 test = false
 bench = false
