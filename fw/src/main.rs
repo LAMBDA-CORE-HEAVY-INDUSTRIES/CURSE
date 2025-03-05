@@ -39,7 +39,12 @@ fn main() -> ! {
         let mut delay = cp.SYST.delay(&clocks);
         delay.delay_ms(100);
 
-        display::initialize_display(data_bus, a0, wr, rd, cs, res, &mut delay);
+        let mut display = display::LcdDisplay::new(data_bus, a0, wr, rd, cs, res, &mut delay).unwrap();
+
+        display.draw_rectangle(50, 50, 150, 150);
+        display.draw_rectangle(100, 100, 200, 200);
+        display.draw_line(50, 50, 200, 200);
+
         loop {}
     }
     loop {}

@@ -1,5 +1,5 @@
 use stm32f4xx_hal as hal;
-use ra8835a::{RA8835A, ParallelBus, Config};
+use ra8835a::{RA8835A, ParallelBus, Config, Command};
 use hal::gpio::DynamicPin;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
@@ -96,15 +96,7 @@ impl ParallelBus for DataBus {
     }
 }
 
-pub fn initialize_display<DB, A0, WR, RD, CS, RES, DELAY>(
-    data_bus: DB,
-    a0: A0,
-    wr: WR,
-    rd: RD,
-    cs: CS,
-    res: RES,
-    delay: &mut DELAY,
-)
+pub struct LcdDisplay<DB, A0, WR, RD, CS, RES, DELAY>
 where
     DB: ParallelBus,
     A0: OutputPin,
@@ -114,18 +106,68 @@ where
     RES: OutputPin,
     DELAY: DelayNs,
 {
-    let config = Config::new(8, 8, 320, 240).unwrap();
-    let mut display = RA8835A::new(
-        data_bus,
-        a0,
-        wr,
-        rd,
-        cs,
-        res,
-        delay,
-        config,
-    ).ok().unwrap();
-    display.clear_display();
-    display.write_text("Hell world");
-    // return display
+    pub driver: RA8835A<DB, A0, WR, RD, CS, RES, DELAY>,
+}
+
+impl<DB, A0, WR, RD, CS, RES, DELAY> LcdDisplay<DB, A0, WR, RD, CS, RES, DELAY>
+where
+    DB: ParallelBus,
+    A0: OutputPin,
+    WR: OutputPin,
+    RD: OutputPin,
+    CS: OutputPin,
+    RES: OutputPin,
+    DELAY: DelayNs,
+{
+    pub fn new(
+        data_bus: DB,
+        a0: A0,
+        wr: WR,
+        rd: RD,
+        cs: CS,
+        res: RES,
+        delay: DELAY,
+    ) -> Result<Self, BusError> {
+        let config = Config::new(8, 8, 320, 240).unwrap();
+        let mut driver = RA8835A::new(data_bus, a0, wr, rd, cs, res, delay, config).ok().unwrap();
+        driver.write_command(Command::CsrDirRight);
+        driver.write_text_at("CURSE", 220, 75);
+        Ok(Self { driver })
+    }
+
+    pub fn draw_line(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) {
+        // Bresenham's line algorithm.
+        let dx = (x1 as i16 - x0 as i16).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 as i16 - y0 as i16).abs();
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        let (mut x, mut y) = (x0 as i16, y0 as i16);
+        loop {
+            self.driver.set_pixel(x as u16, y as u16);
+            if x == x1 as i16 && y == y1 as i16 { break }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
+
+    pub fn draw_rectangle(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) {
+        let (start_x, end_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+        let (start_y, end_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+        for x in start_x..=end_x {
+            self.driver.set_pixel(x, start_y);
+            self.driver.set_pixel(x, end_y);
+        }
+        for y in start_y + 1..end_y {
+            self.driver.set_pixel(start_x, y);
+            self.driver.set_pixel(end_x, y);
+        }
+    }
 }
