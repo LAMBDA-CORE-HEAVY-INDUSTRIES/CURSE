@@ -12,6 +12,7 @@ cortex-m-rt = "0.7"
 panic-halt = "1.0.0"
 # defmt = "0.3"
 # defmt-rtt = "0.3"
+ra8835a = { path = "../../RA8835A" }
 
 [dependencies.stm32f4xx-hal]
 version = "0.22.1"
@@ -22,5 +23,6 @@ panic="abort"
 
 [[bin]]
 name = "curse"
+path = "src/main.rs"
 test = false
 bench = false

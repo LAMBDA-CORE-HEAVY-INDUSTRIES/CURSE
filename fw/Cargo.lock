@@ -71,6 +71,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "nb 1.1.0",
  "panic-halt",
+ "ra8835a",
  "stm32f4xx-hal",
 ]
 
@@ -245,6 +246,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4dccaaaf89514f546c693ddc140f729f958c247918a13380cccc6078391acc"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "ra8835a"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
 ]
 
 [[package]]
