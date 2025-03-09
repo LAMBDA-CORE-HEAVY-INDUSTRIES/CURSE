@@ -3,6 +3,7 @@ use ra8835a::{RA8835A, ParallelBus, Config, Command};
 use hal::gpio::DynamicPin;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
+use crate::bitmaps;
 
 #[derive(Debug)]
 pub enum BusError {
@@ -131,7 +132,7 @@ where
         let config = Config::new(8, 8, 320, 240).unwrap();
         let mut driver = RA8835A::new(data_bus, a0, wr, rd, cs, res, delay, config).ok().unwrap();
         driver.write_command(Command::CsrDirRight);
-        driver.write_text_at("CURSE", 220, 75);
+        // driver.write_text_at("CURSE", 220, 75);
         Ok(Self { driver })
     }
 
@@ -168,6 +169,15 @@ where
         for y in start_y + 1..end_y {
             self.driver.set_pixel(start_x, y);
             self.driver.set_pixel(end_x, y);
+        }
+    }
+
+    pub fn draw_splash(&mut self) {
+        let byte_addr = self.driver.config.graphics_layer_start;
+        self.driver.set_cursor_address(byte_addr);
+        self.driver.write_command(Command::Mwrite);
+        for &px in bitmaps::semiotic {
+            self.driver.write_data(px);
         }
     }
 }
