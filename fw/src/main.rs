@@ -5,7 +5,7 @@
 
 use panic_halt as _; 
 use cortex_m_rt::entry;
-use stm32f4xx_hal as hal;
+use stm32f4xx_hal::{self as hal};
 use crate::hal::{pac, prelude::*};
 use curse::display;
 
@@ -30,8 +30,16 @@ fn main() -> ! {
         let d7= gpioa.pa7.into_dynamic();
         let data_bus = display::DataBus::new(d0, d1, d2, d3, d4, d5, d6, d7);
 
+        // backlight control
+        let pb10_pwm = gpiob.pb10.into_alternate::<1>();
+        let (_, (_, _, pwm_ch3, _)) = dp.TIM2.pwm_hz(1.kHz(), &clocks);
+        let mut pwm_ch3 = pwm_ch3.with(pb10_pwm);
+        pwm_ch3.enable();
+        let max_duty = pwm_ch3.get_max_duty();
+        pwm_ch3.set_duty(max_duty / 4);   
+
         let res = gpiob.pb0.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        let a0 = gpiob.pb1.into_push_pull_output_in_state(hal::gpio::PinState::High);
+        let rs = gpiob.pb1.into_push_pull_output_in_state(hal::gpio::PinState::High);
         let cs = gpiob.pb2.into_push_pull_output_in_state(hal::gpio::PinState::High);
         let rd = gpiob.pb3.into_push_pull_output_in_state(hal::gpio::PinState::High);
         let wr = gpiob.pb4.into_push_pull_output_in_state(hal::gpio::PinState::High);
@@ -39,8 +47,8 @@ fn main() -> ! {
         let mut delay = cp.SYST.delay(&clocks);
         delay.delay_ms(100);
 
-        let mut display = display::LcdDisplay::new(data_bus, a0, wr, rd, cs, res, &mut delay).unwrap();
-        display.draw_splash();
+        let mut display = display::LcdDisplay::new(data_bus, rs, wr, rd, cs, res, &mut delay).unwrap();
+        // display.draw_splash();
         loop {}
     }
     loop {}
