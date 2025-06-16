@@ -1,4 +1,4 @@
-use lt7683::{LT7683, ParallelBus};
+use lt7683::{ColorDepth, DisplayConfig, ParallelBus, LT7683};
 use stm32f4xx_hal as hal;
 use hal::gpio::DynamicPin;
 use embedded_hal::delay::DelayNs;
@@ -128,7 +128,12 @@ where
         res: RES,
         delay: DELAY,
     ) -> Result<Self, BusError> {
-        let mut driver = LT7683::new(data_bus, rs, wr, rd, cs, res, delay).ok().unwrap();
+        let config = DisplayConfig {
+            width: 1024,
+            height: 600,
+            color_depth: ColorDepth::Bpp16,
+        };
+        let mut driver = LT7683::new(data_bus, rs, wr, rd, cs, res, delay, config).ok().unwrap();
         Ok(Self { driver })
     }
 }

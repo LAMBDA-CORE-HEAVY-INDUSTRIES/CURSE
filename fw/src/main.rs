@@ -24,10 +24,10 @@ fn main() -> ! {
         let d1 = gpioa.pa1.into_dynamic();
         let d2 = gpioa.pa8.into_dynamic();
         let d3 = gpioa.pa9.into_dynamic();
-        let d4= gpioa.pa4.into_dynamic();
-        let d5= gpioa.pa5.into_dynamic();
-        let d6= gpioa.pa6.into_dynamic();
-        let d7= gpioa.pa7.into_dynamic();
+        let d4 = gpioa.pa4.into_dynamic();
+        let d5 = gpioa.pa5.into_dynamic();
+        let d6 = gpioa.pa6.into_dynamic();
+        let d7 = gpioa.pa7.into_dynamic();
         let data_bus = display::DataBus::new(d0, d1, d2, d3, d4, d5, d6, d7);
 
         // backlight control
