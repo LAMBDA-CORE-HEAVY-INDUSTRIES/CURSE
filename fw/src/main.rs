@@ -3,11 +3,11 @@
 #![no_main]
 #![no_std]
 
-use panic_halt as _; 
+use embedded_hal_bus::spi::ExclusiveDevice;
+use panic_halt as _;
 use cortex_m_rt::entry;
-use stm32f4xx_hal as hal;
+use stm32f4xx_hal::{self as hal, spi::Spi};
 use crate::hal::{pac, prelude::*};
-use curse::display;
 
 #[entry]
 fn main() -> ! {
@@ -20,27 +20,33 @@ fn main() -> ! {
         let gpioa = dp.GPIOA.split();
         let gpiob = dp.GPIOB.split();
 
-        let d0 = gpioa.pa0.into_dynamic();
-        let d1 = gpioa.pa1.into_dynamic();
-        let d2 = gpioa.pa8.into_dynamic();
-        let d3 = gpioa.pa9.into_dynamic();
-        let d4= gpioa.pa4.into_dynamic();
-        let d5= gpioa.pa5.into_dynamic();
-        let d6= gpioa.pa6.into_dynamic();
-        let d7= gpioa.pa7.into_dynamic();
-        let data_bus = display::DataBus::new(d0, d1, d2, d3, d4, d5, d6, d7);
-
+        let sck = gpioa.pa5.into_alternate::<5>();  // SPI1_SCK
+        let mosi = gpioa.pa7.into_alternate::<5>(); // SPI1_MOSI / SDO
+        let miso = gpioa.pa6.into_alternate::<5>(); // SPI1_MISO / SDI
+        let cs = gpioa.pa4.into_push_pull_output(); // SCS
         let res = gpiob.pb0.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        let a0 = gpiob.pb1.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        let cs = gpiob.pb2.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        let rd = gpiob.pb3.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        let wr = gpiob.pb4.into_push_pull_output_in_state(hal::gpio::PinState::High);
-        
-        let mut delay = cp.SYST.delay(&clocks);
-        delay.delay_ms(100);
 
-        let mut display = display::LcdDisplay::new(data_bus, a0, wr, rd, cs, res, &mut delay).unwrap();
-        display.draw_splash();
+        let spi_bus = Spi::new(
+            dp.SPI1,
+            (sck, miso, mosi),
+            embedded_hal::spi::MODE_0,
+            1.MHz(),
+            &clocks,
+        );
+        let spi_delay = cp.SYST.delay(&clocks);
+        let spi_device = ExclusiveDevice::new(spi_bus, cs, spi_delay).unwrap();
+
+        let pb10_pwm = gpiob.pb10.into_alternate::<1>();
+        let (_, (_, _, pwm_ch3, _)) = dp.TIM2.pwm_hz(1.kHz(), &clocks);
+        let mut pwm_ch3 = pwm_ch3.with(pb10_pwm);
+        pwm_ch3.enable();
+        let max_duty = pwm_ch3.get_max_duty();
+        pwm_ch3.set_duty(max_duty / 2);
+
+        let mut delay = dp.TIM5.delay_us(&clocks);
+        let interface = lt7683::SpiInterface { spi: spi_device };
+        let mut display = lt7683::LT7683::new(interface, res);
+        display.init_color_bar_test(&mut delay).unwrap();
         loop {}
     }
     loop {}
