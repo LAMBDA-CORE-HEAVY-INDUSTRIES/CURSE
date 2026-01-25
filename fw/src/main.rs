@@ -44,8 +44,9 @@ fn main() -> ! {
         pwm_ch3.set_duty(max_duty / 2);
 
         let mut delay = dp.TIM5.delay_us(&clocks);
-        let interface = lt7683::SpiInterface { spi: spi_device };
-        let mut display = lt7683::LT7683::new(interface, res);
+        let spi_interface = lt7683::SpiInterface { spi: spi_device };
+        let display_config = lt7683::DisplayConfig::new();
+        let mut display = lt7683::LT7683::new(spi_interface, res, display_config);
         display.init_color_bar_test(&mut delay).unwrap();
         loop {}
     }
