@@ -1,0 +1,25 @@
+{
+    "adapters": {
+        "probe-rs": {
+            "command": ["probe-rs", "dap-server", "--port", "${unusedLocalPort}"],
+            "name": "probe-rs",
+            "port": "${unusedLocalPort}",
+            "delay": "1000"
+        }
+    },
+    "configurations": {
+        "probe-rs": {
+            "adapter": "probe-rs",
+            "configuration": {
+                "request": "launch",
+                "chip": "STM32F411RE",
+                "coreConfigs": [
+                    {
+                        "cwd": "${workspaceRoot}",
+                        "programBinary": "${workspaceRoot}/target/thumbv7em-none-eabihf/debug/curse"
+                    }
+                ]
+            }
+        }
+    }
+}
