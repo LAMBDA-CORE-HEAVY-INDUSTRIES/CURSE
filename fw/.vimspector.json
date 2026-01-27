@@ -1,10 +1,11 @@
 {
     "adapters": {
         "probe-rs": {
-            "command": ["probe-rs", "dap-server", "--port", "${unusedLocalPort}"],
+            "command": ["probe-rs"],
             "name": "probe-rs",
-            "port": "${unusedLocalPort}",
-            "delay": "1000"
+            "port": "56000",
+            "type": "server",
+            "host": "127.0.0.1"
         }
     },
     "configurations": {
