@@ -5,9 +5,12 @@
 
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
+use defmt_rtt as _;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 use crate::hal::{pac, prelude::*};
+use curse::sequencer::SequencerState;
+use curse::render::render;
 
 #[entry]
 fn main() -> ! {
@@ -30,7 +33,7 @@ fn main() -> ! {
             dp.SPI1,
             (sck, miso, mosi),
             embedded_hal::spi::MODE_0,
-            1.MHz(),
+            10.MHz(),
             &clocks,
         );
         let spi_delay = cp.SYST.delay(&clocks);
@@ -47,7 +50,11 @@ fn main() -> ! {
         let spi_interface = lt7683::SpiInterface { spi: spi_device };
         let display_config = lt7683::DisplayConfig::new();
         let mut display = lt7683::LT7683::new(spi_interface, res, display_config);
-        display.init_color_bar_test(&mut delay).unwrap();
+        display.init(&mut delay).unwrap();
+        display.clear_screen(0x00).unwrap();
+
+        let sequencer_state = SequencerState::new();
+        render(&mut display, &sequencer_state);
         loop {}
     }
     loop {}
