@@ -21,6 +21,8 @@ impl Step {
         if !self.active { return "--"; }
         match self.pitch {
             60 => "C4",
+            61 => "C#4",
+            62 => "D4",
             _ => "??",
         }
     }
