@@ -6,6 +6,7 @@ use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
 pub static BPM: AtomicU32 = AtomicU32::new(120);
 pub static PPQN: AtomicU32 = AtomicU32::new(24);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
+pub static PREVIOUS_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 
@@ -37,6 +38,7 @@ fn TIM3() {
         TICK.store(0, Ordering::Relaxed);
         let max_steps = 16;
         let step = CURRENT_STEP.load(Ordering::Relaxed);
+        PREVIOUS_STEP.store(step, Ordering::Relaxed);
         CURRENT_STEP.store((step + 1) % max_steps, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
     }

@@ -6,8 +6,8 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::render;
-use curse::sequencer::{set_bpm, SequencerState, CURRENT_STEP, STEP_FLAG};
+use curse::render::{render, render_steps};
+use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, STEP_FLAG, SequencerState, set_bpm};
 use defmt_rtt as _;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
@@ -69,7 +69,11 @@ fn main() -> ! {
         loop {
             if STEP_FLAG.swap(false, Ordering::Acquire) {
                 let step = CURRENT_STEP.load(Ordering::Relaxed);
+                let previous_step = PREVIOUS_STEP.load(Ordering::Relaxed);
+                defmt::trace!("previous step {:?}", previous_step);
                 defmt::trace!("step {:?}", step);
+                render_steps(&mut display, &sequencer_state, step, true);
+                render_steps(&mut display, &sequencer_state, previous_step, false);
             }
         }
     }

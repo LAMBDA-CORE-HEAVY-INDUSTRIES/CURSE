@@ -38,15 +38,34 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
 
     for (i, _label) in TRACK_LABELS.iter().enumerate() {
         let mut y = GRID_TOP + (i as u16) * ROW_HEIGHT;
-        y = y + (ROW_HEIGHT / 2);
+        let text_y = y + (ROW_HEIGHT / 2) - 6;
         for n in 0..NUM_STEPS {
             let mut x = GRID_LEFT + (n * CELL_WIDTH);
-            x = x + (CELL_WIDTH / 2);
+            if n % 4 == 0 {
+                display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  0x111111, true);
+            }
+            x = x + (CELL_WIDTH / 2) - 6;
             if n % 2 == 0 {
-                let _ = display.write_text("c2", x, y, None, 0x949494);
+                let _ = display.write_text("c2", x, text_y, None, 0x949494);
             } else {
-                let _ = display.write_text("-", x, y, None, 0x949494);
+                let _ = display.write_text("---", x - 6, text_y, None, 0x949494);
             }
         }
+    }
+}
+
+
+pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
+    display: &mut lt7683::LT7683<I, RESET>,
+    sequencer_state: &SequencerState,
+    step_index: u8,
+    active: bool,
+) {
+    let bg_color = if active { 0x000000 } else { 0x222222 };
+    for (i, _label) in TRACK_LABELS.iter().enumerate() {
+        let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
+        let text_y = y + (ROW_HEIGHT / 2) - 6;
+        let mut x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
+        display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
     }
 }
