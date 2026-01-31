@@ -1,23 +1,21 @@
-use stm32f4xx_hal::prelude::_fugit_RateExtU32;
-use stm32f4xx_hal::pac::TIM3;
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
-use core::sync::atomic::{AtomicU32, Ordering};
+use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
+
+pub static BPM: AtomicU32 = AtomicU32::new(120);
+pub static PPQN: AtomicU32 = AtomicU32::new(24);
+pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
+pub static TICK: AtomicU32 = AtomicU32::new(0);
+pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 
 pub struct SequencerState {
     pub max_steps: u8,
-    pub current_step: u8,
-    pub bpm: AtomicU32,
-    pub ppqn: u32,
 }
 
 impl Default for SequencerState {
     fn default() -> Self {
-        Self {
-            max_steps: 16,
-            current_step: 1,
-            bpm: AtomicU32::new(120),
-            ppqn: 24,
-        }
+        Self { max_steps: 16 }
     }
 }
 
@@ -27,9 +25,25 @@ impl SequencerState {
     }
 }
 
+#[interrupt]
+fn TIM3() {
+    unsafe {
+        // Clear reason for the generated interrupt request
+        (*pac::TIM3::ptr()).sr().modify(|_, w| w.uif().clear_bit());
+    }
+    let tick = TICK.fetch_add(1, Ordering::Relaxed);
+    let ticks_per_step = PPQN.load(Ordering::Relaxed) / 4;
+    if tick > ticks_per_step {
+        TICK.store(0, Ordering::Relaxed);
+        let max_steps = 16;
+        let step = CURRENT_STEP.load(Ordering::Relaxed);
+        CURRENT_STEP.store((step + 1) % max_steps, Ordering::Relaxed);
+        STEP_FLAG.store(true, Ordering::Release);
+    }
+}
 
-pub fn set_bpm(sequencer_state: &mut SequencerState, timer: &mut CounterHz<TIM3>, bpm: u32) {
-    sequencer_state.bpm.store(bpm, Ordering::Relaxed);
-    let tick_freq = bpm * sequencer_state.ppqn;
+pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
+    BPM.store(bpm, Ordering::Relaxed);
+    let tick_freq = (bpm * PPQN.load(Ordering::Relaxed)) / 60;
     timer.start(tick_freq.Hz()).unwrap();
 }

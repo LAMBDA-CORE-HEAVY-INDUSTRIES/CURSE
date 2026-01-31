@@ -1,16 +1,18 @@
-#![deny(unsafe_code)]
 #![allow(clippy::empty_loop)]
 #![no_main]
 #![no_std]
 
+use core::sync::atomic::Ordering;
+
+use crate::hal::{pac, prelude::*};
+use cortex_m_rt::entry;
+use curse::render::render;
+use curse::sequencer::{set_bpm, SequencerState, CURRENT_STEP, STEP_FLAG};
+use defmt_rtt as _;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
-use defmt_rtt as _;
-use cortex_m_rt::entry;
+use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
-use crate::hal::{pac, prelude::*};
-use curse::sequencer::{SequencerState, set_bpm};
-use curse::render::render;
 
 #[entry]
 fn main() -> ! {
@@ -23,12 +25,19 @@ fn main() -> ! {
         let gpioa = dp.GPIOA.split();
         let gpiob = dp.GPIOB.split();
 
-        let sck = gpioa.pa5.into_alternate::<5>();  // SPI1_SCK
+        let sck = gpioa.pa5.into_alternate::<5>(); // SPI1_SCK
         let mosi = gpioa.pa7.into_alternate::<5>(); // SPI1_MOSI / SDO
         let miso = gpioa.pa6.into_alternate::<5>(); // SPI1_MISO / SDI
         let cs = gpioa.pa4.into_push_pull_output(); // SCS
-        let res = gpiob.pb0.into_push_pull_output_in_state(hal::gpio::PinState::High);
+        let res = gpiob
+            .pb0
+            .into_push_pull_output_in_state(hal::gpio::PinState::High);
+
         let mut timer = dp.TIM3.counter_hz(&clocks);
+        timer.listen(Event::Update);
+        unsafe {
+            cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM3);
+        }
 
         let spi_bus = Spi::new(
             dp.SPI1,
@@ -55,9 +64,14 @@ fn main() -> ! {
         display.clear_screen(0x00).unwrap();
 
         let mut sequencer_state = SequencerState::new();
-        set_bpm(&mut sequencer_state, &mut timer, 115);
+        set_bpm(&mut timer, 115);
         render(&mut display, &sequencer_state);
-        loop {}
+        loop {
+            if STEP_FLAG.swap(false, Ordering::Acquire) {
+                let step = CURRENT_STEP.load(Ordering::Relaxed);
+                defmt::trace!("step {:?}", step);
+            }
+        }
     }
     loop {}
 }

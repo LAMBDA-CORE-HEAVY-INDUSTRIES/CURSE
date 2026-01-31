@@ -3,7 +3,7 @@ use core::sync::atomic::Ordering;
 
 use embedded_hal::digital::OutputPin;
 
-use crate::sequencer::SequencerState;
+use crate::sequencer::{SequencerState, BPM};
 use crate::utils::FmtBuf;
 
 const GRID_COLOR: u32 = 0x3F9834;
@@ -16,7 +16,6 @@ const CELL_WIDTH: u16 = (GRID_RIGHT - GRID_LEFT) / NUM_STEPS;
 const TRACK_LABELS: [&str; 8] = ["00", "01", "02", "03", "04", "05", "06", "07"];
 const NUM_TRACKS: usize = TRACK_LABELS.len();
 
-
 pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,
     sequencer_state: &SequencerState,
@@ -24,8 +23,8 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     // display.draw_rectangle(0, 0, 1023, 598 , GRID_COLOR, false);
     let mut buf = [0u8; 32];
     let mut fmt = FmtBuf::new(&mut buf);
-    write!(fmt, "BPM: {}", sequencer_state.bpm.load(Ordering::Relaxed)).unwrap();
-    let _ = display.write_text(fmt.as_str(), GRID_RIGHT - 100, 0, None, 0x949494);
+    write!(fmt, "BPM: {}", BPM.load(Ordering::Relaxed)).unwrap();
+    let _ = display.write_text(fmt.as_str(), GRID_RIGHT - 100, 5, None, 0x949494);
     for (i, label) in TRACK_LABELS.iter().enumerate() {
         let y1 = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let y2 = y1 + ROW_HEIGHT;
