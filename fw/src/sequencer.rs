@@ -10,13 +10,33 @@ pub static PREVIOUS_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy, Default)]
+pub struct Step {
+    pub active: bool,
+    pub pitch: u8,
+}
+
+impl Step {
+    pub fn as_str(&self) -> &'static str {
+        if !self.active { return "--"; }
+        match self.pitch {
+            60 => "C4",
+            _ => "??",
+        }
+    }
+}
+
 pub struct SequencerState {
     pub max_steps: u8,
+    pub steps: [[Step; 16]; 8],
 }
 
 impl Default for SequencerState {
     fn default() -> Self {
-        Self { max_steps: 16 }
+        Self {
+            max_steps: 16,
+            steps: [[Step::default(); 16]; 8],
+        }
     }
 }
 
@@ -48,4 +68,8 @@ pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
     BPM.store(bpm, Ordering::Relaxed);
     let tick_freq = (bpm * PPQN.load(Ordering::Relaxed)) / 60;
     timer.start(tick_freq.Hz()).unwrap();
+}
+
+pub fn set_step(sequencer_state: &mut SequencerState, track_index: u8, step_index: u8, pitch: u8){
+    sequencer_state.steps[track_index as usize][step_index as usize].pitch = pitch;
 }

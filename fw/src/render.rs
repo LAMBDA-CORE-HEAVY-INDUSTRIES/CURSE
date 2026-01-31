@@ -66,6 +66,8 @@ pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
         let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let text_y = y + (ROW_HEIGHT / 2) - 6;
         let mut x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
+        let text_x = x + (CELL_WIDTH / 2) - 6;
         display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
+        display.write_text(sequencer_state.steps[i][step_index as usize].as_str(), text_x, text_y, None, 0x949494);
     }
 }
