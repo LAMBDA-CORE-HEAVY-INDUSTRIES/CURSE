@@ -64,8 +64,7 @@ fn main() -> ! {
         display.clear_screen(0x00).unwrap();
 
         let mut sequencer_state = SequencerState::new();
-        set_bpm(&mut timer, 160);
-        render(&mut display, &sequencer_state);
+        set_bpm(&mut timer, 134);
 
         // For testing
         sequencer_state.steps[2][2].pitch = 60;
@@ -74,6 +73,12 @@ fn main() -> ! {
         sequencer_state.steps[4][6].active = true;
         sequencer_state.steps[4][8].pitch = 62;
         sequencer_state.steps[4][8].active = true;
+        sequencer_state.steps[7][1].pitch = 60;
+        sequencer_state.steps[7][1].active = true;
+        sequencer_state.steps[7][2].pitch = 60;
+        sequencer_state.steps[7][2].active = true;
+
+        render(&mut display, &sequencer_state);
 
         loop {
             if STEP_FLAG.swap(false, Ordering::Acquire) {

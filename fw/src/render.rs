@@ -27,7 +27,7 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     let mut buf = [0u8; 32];
     let mut fmt = FmtBuf::new(&mut buf);
     write!(fmt, "BPM:{}", BPM.load(Ordering::Relaxed)).unwrap();
-    let _ = display.write_text_scaled(fmt.as_str(), GRID_RIGHT - 160, 6, None, 0x05b669, 2, 2);
+    let _ = display.write_text_scaled(fmt.as_str(), GRID_RIGHT - 160, 6, None, 0xf07826, 2, 2);
     for (i, label) in TRACK_LABELS.iter().enumerate() {
         let y1 = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let y2 = y1 + ROW_HEIGHT;
@@ -39,21 +39,8 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
         let _ = display.draw_line(x, GRID_TOP, x, ROW_HEIGHT * 9 - 24, GRID_COLOR);
     }
 
-    for (i, _label) in TRACK_LABELS.iter().enumerate() {
-        let mut y = GRID_TOP + (i as u16) * ROW_HEIGHT;
-        let text_y = y + (ROW_HEIGHT / 2) - 6;
-        for n in 0..NUM_STEPS {
-            let mut x = GRID_LEFT + (n * CELL_WIDTH);
-            if n % 4 == 0 {
-                display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  0x111111, true);
-            }
-            x = x + (CELL_WIDTH / 2) - 6;
-            if n % 2 == 0 {
-                let _ = display.write_text("c2", x, text_y, None, 0x949494);
-            } else {
-                let _ = display.write_text("---", x - 6, text_y, None, 0x949494);
-            }
-        }
+    for n in 0..NUM_STEPS {
+        render_steps(display, sequencer_state, n as u8, false);
     }
 }
 
