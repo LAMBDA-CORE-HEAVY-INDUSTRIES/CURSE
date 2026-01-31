@@ -9,7 +9,7 @@ use defmt_rtt as _;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 use crate::hal::{pac, prelude::*};
-use curse::sequencer::SequencerState;
+use curse::sequencer::{SequencerState, set_bpm};
 use curse::render::render;
 
 #[entry]
@@ -28,6 +28,7 @@ fn main() -> ! {
         let miso = gpioa.pa6.into_alternate::<5>(); // SPI1_MISO / SDI
         let cs = gpioa.pa4.into_push_pull_output(); // SCS
         let res = gpiob.pb0.into_push_pull_output_in_state(hal::gpio::PinState::High);
+        let mut timer = dp.TIM3.counter_hz(&clocks);
 
         let spi_bus = Spi::new(
             dp.SPI1,
@@ -53,7 +54,8 @@ fn main() -> ! {
         display.init(&mut delay).unwrap();
         display.clear_screen(0x00).unwrap();
 
-        let sequencer_state = SequencerState::new();
+        let mut sequencer_state = SequencerState::new();
+        set_bpm(&mut sequencer_state, &mut timer, 115);
         render(&mut display, &sequencer_state);
         loop {}
     }
