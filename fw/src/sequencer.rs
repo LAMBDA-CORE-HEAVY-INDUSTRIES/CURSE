@@ -1,4 +1,3 @@
-use core::ptr::addr_of_mut;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
@@ -69,7 +68,7 @@ fn TIM3() {
         // TODO: Gate length
         unsafe {
             let gpioa = &(*pac::GPIOA::ptr());
-            let sequencer_state = { &mut *addr_of_mut!(SEQ) };
+            let sequencer_state = { &mut *(&raw mut SEQ) };
             if sequencer_state.steps[2][step as usize].active {
                 defmt::trace!("step {:?} is active", step);
                 gpioa.bsrr().write(|w| w.bs10().set_bit());

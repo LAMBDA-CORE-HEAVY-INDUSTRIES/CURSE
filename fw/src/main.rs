@@ -3,7 +3,6 @@
 #![no_std]
 
 use curse::sequencer::SEQ;
-use core::ptr::addr_of_mut;
 use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
@@ -66,7 +65,7 @@ fn main() -> ! {
         display.init(&mut delay).unwrap();
         display.clear_screen(0x00).unwrap();
 
-        let sequencer_state = unsafe { &mut *addr_of_mut!(SEQ) };
+        let sequencer_state = unsafe { &mut *(&raw mut SEQ) };
         set_bpm(&mut timer, 40);
 
         // For testing
