@@ -1,3 +1,4 @@
+use core::ptr::addr_of_mut;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
@@ -10,6 +11,8 @@ pub static PREVIOUS_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 
+pub static mut SEQ: SequencerState = SequencerState::new();
+
 #[derive(Clone, Copy, Default)]
 pub struct Step {
     pub active: bool,
@@ -17,6 +20,10 @@ pub struct Step {
 }
 
 impl Step {
+    pub const fn new() -> Self {
+        Self { active: false, pitch: 0 }
+    }
+
     pub fn as_str(&self) -> &'static str {
         if !self.active { return "--"; }
         match self.pitch {
@@ -33,18 +40,12 @@ pub struct SequencerState {
     pub steps: [[Step; 16]; 8],
 }
 
-impl Default for SequencerState {
-    fn default() -> Self {
+impl SequencerState {
+    pub const fn new() -> Self {
         Self {
             max_steps: 16,
-            steps: [[Step::default(); 16]; 8],
+            steps: [[Step::new(); 16]; 8],
         }
-    }
-}
-
-impl SequencerState {
-    pub fn new() -> Self {
-        Self::default()
     }
 }
 
@@ -63,6 +64,20 @@ fn TIM3() {
         PREVIOUS_STEP.store(step, Ordering::Relaxed);
         CURRENT_STEP.store((step + 1) % max_steps, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
+        // NOTE: We might want to use shift register if running out of GPIO.
+        // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
+        // TODO: Gate length
+        unsafe {
+            let gpioa = &(*pac::GPIOA::ptr());
+            let sequencer_state = { &mut *addr_of_mut!(SEQ) };
+            if sequencer_state.steps[2][step as usize].active {
+                defmt::trace!("step {:?} is active", step);
+                gpioa.bsrr().write(|w| w.bs10().set_bit());
+            } else {
+                defmt::trace!("step {:?} is not active", step);
+                gpioa.bsrr().write(|w| w.br10().set_bit());
+            }
+        }
     }
 }
 

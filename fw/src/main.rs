@@ -2,12 +2,14 @@
 #![no_main]
 #![no_std]
 
+use curse::sequencer::SEQ;
+use core::ptr::addr_of_mut;
 use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
 use curse::render::{render, render_steps};
-use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, STEP_FLAG, SequencerState, set_bpm};
+use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, STEP_FLAG, set_bpm};
 use defmt_rtt as _;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
@@ -25,6 +27,7 @@ fn main() -> ! {
         let gpioa = dp.GPIOA.split();
         let gpiob = dp.GPIOB.split();
 
+        let _gate_out_1 = gpioa.pa10.into_push_pull_output(); 
         let sck = gpioa.pa5.into_alternate::<5>(); // SPI1_SCK
         let mosi = gpioa.pa7.into_alternate::<5>(); // SPI1_MOSI / SDO
         let miso = gpioa.pa6.into_alternate::<5>(); // SPI1_MISO / SDI
@@ -63,8 +66,8 @@ fn main() -> ! {
         display.init(&mut delay).unwrap();
         display.clear_screen(0x00).unwrap();
 
-        let mut sequencer_state = SequencerState::new();
-        set_bpm(&mut timer, 134);
+        let sequencer_state = unsafe { &mut *addr_of_mut!(SEQ) };
+        set_bpm(&mut timer, 40);
 
         // For testing
         sequencer_state.steps[2][2].pitch = 60;
