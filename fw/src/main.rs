@@ -69,16 +69,17 @@ fn main() -> ! {
         set_bpm(&mut timer, 40);
 
         // For testing
-        sequencer_state.steps[2][2].pitch = 60;
-        sequencer_state.steps[2][2].active = true;
-        sequencer_state.steps[4][6].pitch = 61;
-        sequencer_state.steps[4][6].active = true;
-        sequencer_state.steps[4][8].pitch = 62;
-        sequencer_state.steps[4][8].active = true;
-        sequencer_state.steps[7][1].pitch = 60;
-        sequencer_state.steps[7][1].active = true;
-        sequencer_state.steps[7][2].pitch = 60;
-        sequencer_state.steps[7][2].active = true;
+        let pattern = &mut sequencer_state.patterns[0];
+        pattern.tracks[2].steps[2].pitch = 60;
+        pattern.tracks[2].steps[2].active = true;
+        pattern.tracks[4].steps[6].pitch = 61;
+        pattern.tracks[4].steps[6].active = true;
+        pattern.tracks[4].steps[8].pitch = 62;
+        pattern.tracks[4].steps[8].active = true;
+        pattern.tracks[7].steps[1].pitch = 60;
+        pattern.tracks[7].steps[1].active = true;
+        pattern.tracks[7].steps[2].pitch = 60;
+        pattern.tracks[7].steps[2].active = true;
 
         render(&mut display, &sequencer_state);
 

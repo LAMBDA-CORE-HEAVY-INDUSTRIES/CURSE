@@ -56,10 +56,11 @@ pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
     for (i, _label) in TRACK_LABELS.iter().enumerate() {
         let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let text_y = y + (ROW_HEIGHT / 2) - 6;
-        let mut x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
+        let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
         let text_x = x + (CELL_WIDTH / 2) - 6;
-        display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
-        let step = sequencer_state.steps[i][step_index as usize];
-        display.write_text(step.as_str(), text_x, text_y, None, if step.active {0x949494 } else { 0x333333 });
+        let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
+        let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
+        let step = pattern.tracks[i].steps[step_index as usize];
+        let _ = display.write_text(step.as_str(), text_x, text_y, None, if step.active {0x949494 } else { 0x333333 });
     }
 }

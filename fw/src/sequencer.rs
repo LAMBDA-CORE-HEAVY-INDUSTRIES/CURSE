@@ -10,6 +10,11 @@ pub static PREVIOUS_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 
+pub const MAX_TRACKS: usize = 8;
+pub const MAX_STEPS: usize = 16;
+pub const MAX_PATTERNS: usize = 16;
+pub const MAX_SONG_LENGTH: usize = 64;
+
 pub static mut SEQ: SequencerState = SequencerState::new();
 
 #[derive(Clone, Copy, Default)]
@@ -34,17 +39,97 @@ impl Step {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Track {
+    pub steps: [Step; MAX_STEPS],
+    pub length: u8,
+}
+
+impl Track {
+    pub const fn new() -> Self {
+        Self {
+            steps: [Step::new(); MAX_STEPS],
+            length: MAX_STEPS as u8,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Song {
+    pub entries: [u8; MAX_SONG_LENGTH],
+    pub length: u8,
+}
+
+impl Song {
+    pub const fn new() -> Self {
+        Self {
+            entries: [0; MAX_SONG_LENGTH],
+            length: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Pattern {
+    pub tracks: [Track; MAX_TRACKS],
+}
+
+impl Pattern {
+    pub const fn new() -> Self {
+        Self {
+            tracks: [Track::new(); MAX_TRACKS],
+        }
+    }
+
+    pub fn set_length(&mut self, len: u8) {
+        // NOTE: for now, we are setting all tracks the same length
+        for track in &mut self.tracks {
+            track.length = len;
+        }
+    }
+}
+
+
 pub struct SequencerState {
     pub max_steps: u8,
-    pub steps: [[Step; 16]; 8],
+    pub patterns: [Pattern; MAX_PATTERNS],
+    pub song: Song,
+
+    pub play_mode: PlayMode,
+    pub song_position: u8,
+    pub step_position: u8,
+
+    pub visible_pattern: u8,
+    pub playing_pattern: u8,
+}
+
+#[derive(Clone, Copy)]
+pub enum PlayMode {
+    Pattern,
+    Song,
 }
 
 impl SequencerState {
     pub const fn new() -> Self {
         Self {
-            max_steps: 16,
-            steps: [[Step::new(); 16]; 8],
+            max_steps: MAX_STEPS as u8,
+            patterns: [Pattern::new(); MAX_PATTERNS],
+            song: Song::new(),
+            play_mode: PlayMode::Pattern,
+            song_position: 0,
+            step_position: 0,
+            visible_pattern: 0,
+            playing_pattern: 0,
         }
+    }
+
+    #[inline]
+    pub fn get_playing_pattern(&self) -> &Pattern {
+        let pattern_index = match self.play_mode {
+            PlayMode::Pattern => self.playing_pattern,
+            PlayMode::Song => self.song.entries[self.song_position as usize],
+        };
+        &self.patterns[pattern_index as usize]
     }
 }
 
@@ -58,10 +143,8 @@ fn TIM3() {
     let ticks_per_step = PPQN.load(Ordering::Relaxed) / 4;
     if tick > ticks_per_step {
         TICK.store(0, Ordering::Relaxed);
-        let max_steps = 16;
         let step = CURRENT_STEP.load(Ordering::Relaxed);
         PREVIOUS_STEP.store(step, Ordering::Relaxed);
-        CURRENT_STEP.store((step + 1) % max_steps, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
         // NOTE: We might want to use shift register if running out of GPIO.
         // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
@@ -69,7 +152,12 @@ fn TIM3() {
         unsafe {
             let gpioa = &(*pac::GPIOA::ptr());
             let sequencer_state = { &mut *(&raw mut SEQ) };
-            if sequencer_state.steps[2][step as usize].active {
+            let pattern = sequencer_state.get_playing_pattern();
+            // TODO: For now we just use the first track length. We can utilize different length
+            // tracks in the future for polymetric things.
+            let length = pattern.tracks[0].length;
+            CURRENT_STEP.store((step + 1) % length, Ordering::Relaxed);
+            if pattern.tracks[2].steps[step as usize].active {
                 defmt::trace!("step {:?} is active", step);
                 gpioa.bsrr().write(|w| w.bs10().set_bit());
             } else {
@@ -87,5 +175,6 @@ pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
 }
 
 pub fn set_step(sequencer_state: &mut SequencerState, track_index: u8, step_index: u8, pitch: u8){
-    sequencer_state.steps[track_index as usize][step_index as usize].pitch = pitch;
+    let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
+    pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
 }
