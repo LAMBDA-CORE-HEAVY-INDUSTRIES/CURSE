@@ -1,16 +1,34 @@
-steps:
-- uses: actions/checkout@v4
+name: Build embedded fw
 
-- name: Install Rust toolchain and target
-  uses: actions-rs/toolchain@v1
-  with:
-    toolchain: stable
-    override: true
-    components: rust-src
-    targets: thumbv7em-none-eabihf
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
-- name: Build for embedded target
-  run: cargo build --target thumbv7em-none-eabihf --verbose
+env:
+  CARGO_TERM_COLOR: always
 
-# - name: Run host tests
-#   run: cargo test --verbose
+defaults:
+  run:
+    working-directory: fw
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain and target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: thumbv7em-none-eabihf
+          components: rust-src
+
+      - name: Build for embedded target
+        run: cargo build --target thumbv7em-none-eabihf --verbose
+
+      # - name: Run host tests
+      #   run: cargo test --verbose
