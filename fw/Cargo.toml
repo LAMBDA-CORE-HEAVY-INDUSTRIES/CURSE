@@ -10,7 +10,7 @@ cortex-m = "0.7"
 cortex-m-rt = "0.7"
 # Panic behaviour, see https://crates.io/keywords/panic-impl for alternatives
 panic-halt = "1.0.0"
-lt7683 = { path = "../../LT7683" }
+lt7683 = "0.1.0"
 embedded-hal-bus = "0.3.0"
 defmt = "1.0.1"
 defmt-rtt = "1.1.0"

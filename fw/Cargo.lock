@@ -255,6 +255,8 @@ checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 [[package]]
 name = "lt7683"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0ef28cf29937d0e43eea0a5dbeb10a7ae64939d2c5cada42a2a091c6d7c12ce"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
