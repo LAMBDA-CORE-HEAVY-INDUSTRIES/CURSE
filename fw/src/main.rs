@@ -2,18 +2,20 @@
 #![no_main]
 #![no_std]
 
-use curse::sequencer::SEQ;
 use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
 use curse::render::{render, render_steps};
-use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, STEP_FLAG, set_bpm};
-use defmt_rtt as _;
+use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, SEQ, STEP_FLAG, set_bpm};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
+use rtt_target::rprintln;
 use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
+
+#[cfg(feature = "keyboard-input")]
+use curse::input::{handle_button_press, key_to_button};
 
 #[entry]
 fn main() -> ! {
@@ -83,12 +85,48 @@ fn main() -> ! {
 
         render(&mut display, &sequencer_state);
 
+        #[cfg(feature = "keyboard-input")]
+        let channels = rtt_target::rtt_init! {
+            up: {
+                0: {
+                    size: 1024,
+                    mode: rtt_target::ChannelMode::NoBlockSkip,
+                    name: "Terminal"
+                }
+            }
+            down: {
+                0: {
+                    size: 64,
+                    name: "Terminal"
+                }
+            }
+        };
+
+        #[cfg(not(feature = "keyboard-input"))]
+        rtt_target::rtt_init_print!();
+
+        #[cfg(feature = "keyboard-input")]
+        let mut input_channel = channels.down.0;
+
+        #[cfg(feature = "keyboard-input")]
+        rtt_target::set_print_channel(channels.up.0);
+
         loop {
+            #[cfg(feature = "keyboard-input")]
+            {
+                let mut buf = [0u8; 1];
+                if input_channel.read(&mut buf) > 0 {
+                    if let Some(button) = key_to_button(buf[0]) {
+                        handle_button_press(button, sequencer_state);
+                    }
+                }
+            }
+
             if STEP_FLAG.swap(false, Ordering::Acquire) {
                 let step = CURRENT_STEP.load(Ordering::Relaxed);
                 let previous_step = PREVIOUS_STEP.load(Ordering::Relaxed);
-                defmt::trace!("previous step {:?}", previous_step);
-                defmt::trace!("step {:?}", step);
+                rprintln!("previous step {}", previous_step);
+                rprintln!("step {}", step);
                 render_steps(&mut display, &sequencer_state, step, true);
                 render_steps(&mut display, &sequencer_state, previous_step, false);
             }

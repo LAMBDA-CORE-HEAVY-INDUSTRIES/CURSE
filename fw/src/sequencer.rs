@@ -1,4 +1,5 @@
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use rtt_target::rprintln;
 use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
 use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
@@ -101,6 +102,7 @@ pub struct SequencerState {
 
     pub visible_pattern: u8,
     pub playing_pattern: u8,
+    pub selected_track: u8,
 }
 
 #[derive(Clone, Copy)]
@@ -120,6 +122,7 @@ impl SequencerState {
             step_position: 0,
             visible_pattern: 0,
             playing_pattern: 0,
+            selected_track: 0,
         }
     }
 
@@ -158,10 +161,10 @@ fn TIM3() {
             let length = pattern.tracks[0].length;
             CURRENT_STEP.store((step + 1) % length, Ordering::Relaxed);
             if pattern.tracks[2].steps[step as usize].active {
-                defmt::trace!("step {:?} is active", step);
+                rprintln!("step {} is active", step);
                 gpioa.bsrr().write(|w| w.bs10().set_bit());
             } else {
-                defmt::trace!("step {:?} is not active", step);
+                rprintln!("step {} is not active", step);
                 gpioa.bsrr().write(|w| w.br10().set_bit());
             }
         }

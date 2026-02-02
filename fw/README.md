@@ -14,5 +14,20 @@
 
 ## Logging
 
-- You can set log statements with defmt, e.g. `defmt::trace!("things are happening to {:?}", that);`.
-- More information of logging levels etc; https://defmt.ferrous-systems.com/
+- Use `rprintln!` from `rtt-target` for logging, e.g. `rprintln!("things are happening to {}", that);`
+- Logs are sent over RTT and visible in the probe-rs terminal
+
+## Keyboard Input (Development)
+
+To simulate hardware buttons via keyboard during development:
+
+```bash
+cargo embed --features keyboard-input
+```
+
+In cargo embed TUI, press tab to use input field, enter to send the input.
+
+Key mappings:
+- `1-0, q-y`: Steps 0-15
+- `a-k`: Tracks 0-7
+- `Space`: Play, `Enter`: Stop

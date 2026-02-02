@@ -1,0 +1,16 @@
+[default.general]
+chip = "STM32F411RE"
+
+[default.rtt]
+enabled = true
+timeout = 3000
+
+[[default.rtt.up_channels]]
+channel = 0
+mode = "NoBlockSkip"
+
+[[default.rtt.down_channels]]
+channel = 0
+
+[default.reset]
+halt_afterwards = false

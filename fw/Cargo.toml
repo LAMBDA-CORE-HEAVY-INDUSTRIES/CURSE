@@ -3,7 +3,12 @@ name = "curse"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+keyboard-input = []
+
 [dependencies]
+rtt-target = "0.6"
 embedded-hal = "1.0.0"
 nb = "1"
 cortex-m = "0.7"
@@ -12,8 +17,6 @@ cortex-m-rt = "0.7"
 panic-halt = "1.0.0"
 lt7683 = "0.1.0"
 embedded-hal-bus = "0.3.0"
-defmt = "1.0.1"
-defmt-rtt = "1.1.0"
 
 [dependencies.stm32f4xx-hal]
 version = "0.22.1"
