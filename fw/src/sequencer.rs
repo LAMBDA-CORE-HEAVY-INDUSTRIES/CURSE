@@ -6,10 +6,11 @@ use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
 
 pub static BPM: AtomicU32 = AtomicU32::new(120);
 pub static PPQN: AtomicU32 = AtomicU32::new(24);
+pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
-pub static PREVIOUS_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
+pub static PLAYING: AtomicBool = AtomicBool::new(false);
 
 pub const MAX_TRACKS: usize = 8;
 pub const MAX_STEPS: usize = 16;
@@ -142,12 +143,15 @@ fn TIM3() {
         // Clear reason for the generated interrupt request
         (*pac::TIM3::ptr()).sr().modify(|_, w| w.uif().clear_bit());
     }
+    if !PLAYING.load(Ordering::Relaxed) {
+        return;
+    }
     let tick = TICK.fetch_add(1, Ordering::Relaxed);
     let ticks_per_step = PPQN.load(Ordering::Relaxed) / 4;
     if tick > ticks_per_step {
         TICK.store(0, Ordering::Relaxed);
-        let step = CURRENT_STEP.load(Ordering::Relaxed);
-        PREVIOUS_STEP.store(step, Ordering::Relaxed);
+        let step = NEXT_STEP.load(Ordering::Relaxed);
+        CURRENT_STEP.store(step, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
         // NOTE: We might want to use shift register if running out of GPIO.
         // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
@@ -159,7 +163,7 @@ fn TIM3() {
             // TODO: For now we just use the first track length. We can utilize different length
             // tracks in the future for polymetric things.
             let length = pattern.tracks[0].length;
-            CURRENT_STEP.store((step + 1) % length, Ordering::Relaxed);
+            NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
             if pattern.tracks[2].steps[step as usize].active {
                 rprintln!("step {} is active", step);
                 gpioa.bsrr().write(|w| w.bs10().set_bit());

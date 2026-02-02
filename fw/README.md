@@ -30,4 +30,4 @@ In cargo embed TUI, press tab to use input field, enter to send the input.
 Key mappings:
 - `1-0, q-y`: Steps 0-15
 - `a-k`: Tracks 0-7
-- `Space`: Play, `Enter`: Stop
+- `Space`: Play/Pause, `x`: Stop

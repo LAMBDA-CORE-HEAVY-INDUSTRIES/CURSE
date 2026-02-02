@@ -1,4 +1,6 @@
-use crate::sequencer::SequencerState;
+use core::sync::atomic::Ordering;
+
+use crate::sequencer::{SequencerState, PLAYING};
 use rtt_target::rprintln;
 
 #[derive(Clone, Copy, Debug)]
@@ -31,12 +33,12 @@ pub fn handle_button_press(button: Button, seq: &mut SequencerState) {
             rprintln!("Selected pattern {}", n);
         }
         Button::Play => {
-            rprintln!("Play");
-            // TODO: implement play/pause toggle
+            let was_playing = PLAYING.fetch_xor(true, Ordering::Relaxed);
+            rprintln!("{}", if was_playing { "Pause" } else { "Play" });
         }
         Button::Stop => {
+            PLAYING.store(false, Ordering::Relaxed);
             rprintln!("Stop");
-            // TODO: implement stop
         }
     }
 }
@@ -72,7 +74,7 @@ pub fn key_to_button(key: u8) -> Option<Button> {
 
         // Transport
         b' ' => Some(Button::Play),  // Space = play/pause
-        b'\n' => Some(Button::Stop), // Enter = stop
+        b'x' => Some(Button::Stop),  // x = stop
         _ => None,
     }
 }

@@ -7,10 +7,9 @@ use core::sync::atomic::Ordering;
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
 use curse::render::{render, render_steps};
-use curse::sequencer::{CURRENT_STEP, PREVIOUS_STEP, SEQ, STEP_FLAG, set_bpm};
+use curse::sequencer::{CURRENT_STEP, SEQ, STEP_FLAG, set_bpm};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
-use rtt_target::rprintln;
 use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 
@@ -123,12 +122,11 @@ fn main() -> ! {
             }
 
             if STEP_FLAG.swap(false, Ordering::Acquire) {
-                let step = CURRENT_STEP.load(Ordering::Relaxed);
-                let previous_step = PREVIOUS_STEP.load(Ordering::Relaxed);
-                rprintln!("previous step {}", previous_step);
-                rprintln!("step {}", step);
-                render_steps(&mut display, &sequencer_state, step, true);
-                render_steps(&mut display, &sequencer_state, previous_step, false);
+                let active_step = CURRENT_STEP.load(Ordering::Relaxed);
+                let max_steps = sequencer_state.max_steps;
+                let inactive_step = if active_step == 0 { max_steps - 1 } else { active_step - 1 };
+                render_steps(&mut display, &sequencer_state, active_step, true);
+                render_steps(&mut display, &sequencer_state, inactive_step, false);
             }
         }
     }
