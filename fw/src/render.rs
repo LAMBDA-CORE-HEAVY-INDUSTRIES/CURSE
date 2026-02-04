@@ -3,7 +3,7 @@ use core::sync::atomic::Ordering;
 
 use embedded_hal::digital::OutputPin;
 
-use crate::sequencer::{SequencerState, BPM};
+use crate::sequencer::{BPM, CURRENT_STEP, SequencerState};
 use crate::utils::FmtBuf;
 
 // const GRID_COLOR: u32 = 0x3F9834;
@@ -44,7 +44,6 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     }
 }
 
-
 pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,
     sequencer_state: &SequencerState,
@@ -63,4 +62,24 @@ pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
         let step = pattern.tracks[i].steps[step_index as usize];
         let _ = display.write_text(step.as_str(), text_x, text_y, None, if step.active {0x949494 } else { 0x333333 });
     }
+}
+
+pub fn render_step<I: lt7683::LT7683Interface, RESET: OutputPin>(
+    display: &mut lt7683::LT7683<I, RESET>,
+    sequencer_state: &SequencerState,
+    step_index: u8,
+) {
+    let color = if step_index % 4 == 0 { 0x000000 } else { 0x121212 };
+    let active_step = CURRENT_STEP.load(Ordering::Relaxed);
+    let active = if step_index == active_step { true } else { false };
+    let bg_color = if active { 0x444444 } else { color };
+    let i = sequencer_state.selected_track as usize;
+    let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
+    let text_y = y + (ROW_HEIGHT / 2) - 6;
+    let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
+    let text_x = x + (CELL_WIDTH / 2) - 6;
+    let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
+    let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
+    let step = pattern.tracks[i].steps[step_index as usize];
+    let _ = display.write_text(step.as_str(), text_x, text_y, None, if step.active {0x949494 } else { 0x333333 });
 }

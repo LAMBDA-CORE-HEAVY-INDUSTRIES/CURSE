@@ -10,6 +10,7 @@ pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
+pub static EDIT_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
 
 pub const MAX_TRACKS: usize = 8;
@@ -19,7 +20,7 @@ pub const MAX_SONG_LENGTH: usize = 64;
 
 pub static mut SEQ: SequencerState = SequencerState::new();
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
     pub active: bool,
     pub pitch: u8,
@@ -104,6 +105,14 @@ pub struct SequencerState {
     pub visible_pattern: u8,
     pub playing_pattern: u8,
     pub selected_track: u8,
+
+    // NOTE: By storing the selected step like this, we are basically restricting ourselves to
+    // being able to edit only the steps that are currently visible (visible_pattern). So if there
+    // are multiple patterns, once the current pattern changes, we need to either set the
+    // selected_step to None, or keep it as is, which means that user would be editing step from
+    // the next pattern. tldr: for now, no way to edit step of a pattern that is not visible
+    // anymore.
+    pub selected_step: Option<u8>,
 }
 
 #[derive(Clone, Copy)]
@@ -124,6 +133,7 @@ impl SequencerState {
             visible_pattern: 0,
             playing_pattern: 0,
             selected_track: 0,
+            selected_step: None,
         }
     }
 
@@ -181,7 +191,14 @@ pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
     timer.start(tick_freq.Hz()).unwrap();
 }
 
+pub fn select_step(seq: &mut SequencerState, step_index: u8){
+    seq.selected_step = Some(step_index);
+}
+
 pub fn set_step(sequencer_state: &mut SequencerState, track_index: u8, step_index: u8, pitch: u8){
     let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
     pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
+    // TODO: toggle active
+    pattern.tracks[track_index as usize].steps[step_index as usize].active = true;
+    EDIT_FLAG.store(true, Ordering::Release);
 }

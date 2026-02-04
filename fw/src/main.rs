@@ -6,8 +6,8 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::{render, render_steps};
-use curse::sequencer::{CURRENT_STEP, SEQ, STEP_FLAG, set_bpm};
+use curse::render::{render, render_step, render_steps};
+use curse::sequencer::{CURRENT_STEP, EDIT_FLAG, SEQ, STEP_FLAG, set_bpm};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
 use stm32f4xx_hal::timer::Event;
@@ -127,6 +127,9 @@ fn main() -> ! {
                 let inactive_step = if active_step == 0 { max_steps - 1 } else { active_step - 1 };
                 render_steps(&mut display, &sequencer_state, active_step, true);
                 render_steps(&mut display, &sequencer_state, inactive_step, false);
+            }
+            if EDIT_FLAG.swap(false, Ordering::Acquire) {
+                render_step(&mut display, &sequencer_state, sequencer_state.selected_step.unwrap());
             }
         }
     }
