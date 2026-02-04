@@ -8,6 +8,9 @@ pub enum Button {
     Step(u8),    // 0-15
     Track(u8),   // 0-7
     Pattern(u8), // 0-15
+    Note(u8),
+    OctaveUp,
+    OctaveDown,
     Play,
     Stop,
 }
@@ -40,6 +43,15 @@ pub fn handle_button_press(button: Button, seq: &mut SequencerState) {
             PLAYING.store(false, Ordering::Relaxed);
             rprintln!("Stop");
         }
+        Button::Note(n) => {
+            rprintln!("note: {}", n);
+        }
+        Button::OctaveUp => {
+            rprintln!("octave up");
+        }
+        Button::OctaveDown => {
+            rprintln!("octave down");
+        }
     }
 }
 
@@ -63,18 +75,34 @@ pub fn key_to_button(key: u8) -> Option<Button> {
         b't' => Some(Button::Step(14)),
         b'y' => Some(Button::Step(15)),
 
-        b'a' => Some(Button::Track(0)),
-        b's' => Some(Button::Track(1)),
-        b'd' => Some(Button::Track(2)),
-        b'f' => Some(Button::Track(3)),
-        b'g' => Some(Button::Track(4)),
-        b'h' => Some(Button::Track(5)),
-        b'j' => Some(Button::Track(6)),
-        b'k' => Some(Button::Track(7)),
+        // Shift+1-0 for US kb layouts
+        b'!' => Some(Button::Track(0)),
+        b'@' => Some(Button::Track(1)),
+        b'#' => Some(Button::Track(2)),
+        b'$' => Some(Button::Track(3)),
+        b'%' => Some(Button::Track(4)),
+        b'^' => Some(Button::Track(5)),
+        b'&' => Some(Button::Track(6)),
+        b'*' => Some(Button::Track(7)),
 
-        // Transport
-        b' ' => Some(Button::Play),  // Space = play/pause
-        b'x' => Some(Button::Stop),  // x = stop
+        b'z' => Some(Button::Note(0)),
+        b's' => Some(Button::Note(1)),
+        b'x' => Some(Button::Note(2)),
+        b'd' => Some(Button::Note(3)),
+        b'c' => Some(Button::Note(4)),
+        b'v' => Some(Button::Note(5)),
+        b'g' => Some(Button::Note(6)),
+        b'b' => Some(Button::Note(7)),
+        b'h' => Some(Button::Note(8)),
+        b'n' => Some(Button::Note(9)),
+        b'j' => Some(Button::Note(10)),
+        b'm' => Some(Button::Note(11)),
+
+        b'+' => Some(Button::OctaveUp),
+        b'-' => Some(Button::OctaveDown),
+
+        b' ' => Some(Button::Play),
+        b'x' => Some(Button::Stop),
         _ => None,
     }
 }
