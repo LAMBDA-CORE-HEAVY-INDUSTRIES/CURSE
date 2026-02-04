@@ -6,7 +6,7 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::{render, render_step, render_steps};
+use curse::render::{render, render_selected_step, render_steps};
 use curse::sequencer::{CURRENT_STEP, EDIT_FLAG, SEQ, STEP_FLAG, set_bpm};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
@@ -129,7 +129,13 @@ fn main() -> ! {
                 render_steps(&mut display, &sequencer_state, inactive_step, false);
             }
             if EDIT_FLAG.swap(false, Ordering::Acquire) {
-                render_step(&mut display, &sequencer_state, sequencer_state.selected_step.unwrap());
+                if let Some(prev) = sequencer_state.prev_selected_step {
+                    render_steps(&mut display, &sequencer_state, prev, false);
+                }
+                if let Some(curr) = sequencer_state.selected_step {
+                    render_selected_step(&mut display, &sequencer_state, curr);
+                }
+
             }
         }
     }

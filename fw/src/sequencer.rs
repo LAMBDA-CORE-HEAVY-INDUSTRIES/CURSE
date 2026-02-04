@@ -37,7 +37,7 @@ impl Step {
             60 => "C4",
             61 => "C#4",
             62 => "D4",
-            _ => "??",
+            _ => "--",
         }
     }
 }
@@ -113,6 +113,7 @@ pub struct SequencerState {
     // the next pattern. tldr: for now, no way to edit step of a pattern that is not visible
     // anymore.
     pub selected_step: Option<u8>,
+    pub prev_selected_step: Option<u8>,
 }
 
 #[derive(Clone, Copy)]
@@ -134,6 +135,7 @@ impl SequencerState {
             playing_pattern: 0,
             selected_track: 0,
             selected_step: None,
+            prev_selected_step: None,
         }
     }
 
@@ -192,7 +194,9 @@ pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
 }
 
 pub fn select_step(seq: &mut SequencerState, step_index: u8){
+    seq.prev_selected_step = seq.selected_step;
     seq.selected_step = Some(step_index);
+    EDIT_FLAG.store(true, Ordering::Release);
 }
 
 pub fn set_step(sequencer_state: &mut SequencerState, track_index: u8, step_index: u8, pitch: u8){

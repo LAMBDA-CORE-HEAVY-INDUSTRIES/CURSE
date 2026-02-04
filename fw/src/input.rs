@@ -22,9 +22,6 @@ pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState)
             let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
             let step = &mut pattern.tracks[track].steps[n as usize];
             step.active = !step.active;
-            if step.active && step.pitch == 0 {
-                step.pitch = 60; // Default to C4
-            }
             rprintln!("Step {} on track {}: {}", n, track, step.active);
             select_step(sequencer_state, n);
         }
