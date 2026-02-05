@@ -124,44 +124,57 @@ fn main() -> ! {
                     }
                 }
             }
-
-            if STEP_FLAG.swap(false, Ordering::Acquire) {
-                let active_step = CURRENT_STEP.load(Ordering::Relaxed);
-                let max_steps = sequencer_state.max_steps;
-                let inactive_step = if active_step == 0 { max_steps - 1 } else { active_step - 1 };
-                render_column(&mut display, &sequencer_state, active_step, CellHighlight::Playing);
-                render_column(&mut display, &sequencer_state, inactive_step, CellHighlight::None);
-            }
+            let step_moved = STEP_FLAG.swap(false, Ordering::Acquire);
             let dirty = take_dirty();
+            let mut dirty_steps: u16 = 0;
+            let mut dirty_labels = false;
 
-            if dirty != 0 {
-                if dirty & DIRTY_STEP_SELECTION != 0 {
-                    if let Some(prev) = sequencer_state.prev_selected_step {
-                        if sequencer_state.selected_step != Some(prev) {
-                            render_column(&mut display, &sequencer_state, prev, CellHighlight::None);
-                        }
-                    }
-                    if let Some(curr) = sequencer_state.selected_step {
-                        render_column(&mut display, &sequencer_state, curr, CellHighlight::None);
-                        render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
+            let playing_step = CURRENT_STEP.load(Ordering::Relaxed);
+            let max_steps = sequencer_state.max_steps;
+            let prev_step = if playing_step == 0 { max_steps - 1 } else { playing_step - 1 };
+
+            if step_moved {
+                dirty_steps |= 1 << playing_step;
+                dirty_steps |= 1 << prev_step;
+            }
+            if dirty & DIRTY_STEP_SELECTION != 0 {
+                if let Some(prev) = sequencer_state.prev_selected_step {
+                    dirty_steps |= 1 << prev;
+                }
+                if let Some(curr) = sequencer_state.selected_step {
+                    dirty_steps |= 1 << curr;
+                }
+            }
+            if dirty & (DIRTY_TRACK_SELECTION | DIRTY_NOTE_DATA) != 0 {
+                if let Some(curr) = sequencer_state.selected_step {
+                    dirty_steps |= 1 << curr;
+                }
+            }
+            if dirty & DIRTY_TRACK_SELECTION != 0 {
+                dirty_labels = true;
+            }
+            // Render all dirty steps
+            if dirty_steps != 0 {
+                let selected_step = sequencer_state.selected_step;
+                let selected_tracks = sequencer_state.selected_tracks;
+                let all_tracks = sequencer_state.get_all_tracks();
+                let unselected_tracks = all_tracks & !selected_tracks;
+
+                for step in (0..16u8).filter(|&s| dirty_steps & (1 << s) != 0) {
+                    let is_playing = step == playing_step;
+                    let is_selected = selected_step == Some(step);
+                    let base = if is_playing { CellHighlight::Playing } else { CellHighlight::None };
+                    if is_selected {
+                        render_cells(&mut display, &sequencer_state, step, selected_tracks, CellHighlight::Selected);
+                        render_cells(&mut display, &sequencer_state, step, unselected_tracks, base);
+                    } else {
+                        render_column(&mut display, &sequencer_state, step, base);
                     }
                 }
-                if dirty & DIRTY_TRACK_SELECTION != 0 {
-                    if dirty & DIRTY_STEP_SELECTION == 0 {
-                        if let Some(curr) = sequencer_state.selected_step {
-                            render_column(&mut display, &sequencer_state, curr, CellHighlight::None);
-                            render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
-                        }
-                    }
-                    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
-                        let selected = sequencer_state.is_track_selected(track_index);
-                        render_track_label(&mut display, track_index, selected);
-                    }
-                }
-                if dirty & DIRTY_NOTE_DATA != 0 {
-                    if let Some(curr) = sequencer_state.selected_step {
-                        render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
-                    }
+            }
+            if dirty_labels {
+                for track in iter_bits(sequencer_state.get_all_tracks()) {
+                    render_track_label(&mut display, track, sequencer_state.is_track_selected(track));
                 }
             }
         }
