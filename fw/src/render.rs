@@ -3,7 +3,7 @@ use core::sync::atomic::Ordering;
 
 use embedded_hal::digital::OutputPin;
 
-use crate::sequencer::{BPM, CURRENT_STEP, SequencerState};
+use crate::sequencer::{BPM, SequencerState};
 use crate::utils::{FmtBuf, iter_bits};
 
 // const GRID_COLOR: u32 = 0x3F9834;
@@ -34,6 +34,9 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     write!(fmt, "BPM:{}", BPM.load(Ordering::Relaxed)).unwrap();
     let _ = display.write_text_scaled(fmt.as_str(), GRID_RIGHT - 160, 6, None, 0xf07826, 2, 2);
     for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+        let y1 = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
+        let y2 = y1 + ROW_HEIGHT;
+        let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
         render_track_label(display, track_index, false);
     }
     for n in 1..NUM_STEPS {
@@ -51,11 +54,9 @@ pub fn render_track_label<I: lt7683::LT7683Interface, RESET: OutputPin>(
     track_index: u8,
     selected: bool,
 ) {
-    let color = if selected { COLOR_TRACK_LABEL_ACTIVE_FG } else { COLOR_TRACK_LABEL_FG };
-    let y1 = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
-    let y2 = y1 + ROW_HEIGHT;
-    let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
-    let _ = display.write_text(TRACK_LABELS[track_index as usize], GRID_LEFT - 40, y1 + 25, None, color);
+    let color_fg = if selected { COLOR_TRACK_LABEL_ACTIVE_FG } else { COLOR_TRACK_LABEL_FG };
+    let y = GRID_TOP + (track_index as u16) * ROW_HEIGHT + 25;
+    let _ = display.write_text(TRACK_LABELS[track_index as usize], GRID_LEFT - 40, y, None, color_fg);
 }
 
 
