@@ -45,7 +45,7 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     }
 
     for n in 0..NUM_STEPS {
-        render_steps(display, sequencer_state, n as u8, false);
+        render_column(display, sequencer_state, n as u8, CellHighlight::None);
     }
 }
 
@@ -60,39 +60,61 @@ pub fn render_track_label<I: lt7683::LT7683Interface, RESET: OutputPin>(
 }
 
 
-pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
+#[derive(Clone, Copy, PartialEq)]
+pub enum CellHighlight {
+    None,
+    Playing,
+    Selected,
+}
+
+pub fn render_cell<I: lt7683::LT7683Interface, RESET: OutputPin>(
+    display: &mut lt7683::LT7683<I, RESET>,
+    sequencer_state: &SequencerState,
+    track_index: u8,
+    step_index: u8,
+    highlight: CellHighlight,
+) {
+    let base_bg = if step_index % 4 == 0 { COLOR_CELL_SECONDARY_BG } else { COLOR_CELL_BG };
+    let bg_color = match highlight {
+        CellHighlight::None => base_bg,
+        CellHighlight::Playing => COLOR_CELL_ACTIVE_BG,
+        CellHighlight::Selected => COLOR_CELL_SELECTED_BG,
+    };
+
+    let y = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
+    let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
+    let text_y = y + (ROW_HEIGHT / 2) - 6;
+    let text_x = x + (CELL_WIDTH / 2) - 6;
+    let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1, bg_color, true);
+
+    let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
+    let step = pattern.tracks[track_index as usize].steps[step_index as usize];
+    let text_color = match highlight {
+        CellHighlight::Selected => 0x000000,
+        _ => if step.active && step.pitch != 0 { 0x949494 } else { 0x333333 },
+    };
+    let _ = display.write_text(step.as_str(), text_x, text_y, None, text_color);
+}
+
+pub fn render_column<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,
     sequencer_state: &SequencerState,
     step_index: u8,
-    active: bool,
+    highlight: CellHighlight,
 ) {
-    let color = if step_index % 4 == 0 { COLOR_CELL_SECONDARY_BG } else { COLOR_CELL_BG };
-    let bg_color = if active { COLOR_CELL_ACTIVE_BG } else { color };
     for track_index in iter_bits(sequencer_state.get_all_tracks()) {
-        let y = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
-        let text_y = y + (ROW_HEIGHT / 2) - 6;
-        let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
-        let text_x = x + (CELL_WIDTH / 2) - 6;
-        let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
-        let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-        let step = pattern.tracks[track_index as usize].steps[step_index as usize];
-        let _ = display.write_text(step.as_str(), text_x, text_y, None, if step.active && step.pitch != 0 {0x949494 } else { 0x333333 });
+        render_cell(display, sequencer_state, track_index, step_index, highlight);
     }
 }
 
-pub fn render_selected_step<I: lt7683::LT7683Interface, RESET: OutputPin>(
+pub fn render_cells<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,
     sequencer_state: &SequencerState,
     step_index: u8,
+    tracks: u8,
+    highlight: CellHighlight,
 ) {
-    for track_index in iter_bits(sequencer_state.selected_tracks) {
-        let y = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
-        let text_y = y + (ROW_HEIGHT / 2) - 6;
-        let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
-        let text_x = x + (CELL_WIDTH / 2) - 6;
-        let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  COLOR_CELL_SELECTED_BG, true);
-        let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-        let step = pattern.tracks[track_index as usize].steps[step_index as usize];
-        let _ = display.write_text(step.as_str(), text_x, text_y, None, 0x00000);
+    for track_index in iter_bits(tracks) {
+        render_cell(display, sequencer_state, track_index, step_index, highlight);
     }
 }
