@@ -4,6 +4,8 @@ use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
 use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
 
+use crate::utils::iter_bits;
+
 pub static BPM: AtomicU32 = AtomicU32::new(120);
 pub static PPQN: AtomicU32 = AtomicU32::new(24);
 pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
@@ -104,7 +106,7 @@ pub struct SequencerState {
 
     pub visible_pattern: u8,
     pub playing_pattern: u8,
-    pub selected_track: u8,
+    pub selected_tracks: u8,
 
     // NOTE: By storing the selected step like this, we are basically restricting ourselves to
     // being able to edit only the steps that are currently visible (visible_pattern). So if there
@@ -133,7 +135,7 @@ impl SequencerState {
             step_position: 0,
             visible_pattern: 0,
             playing_pattern: 0,
-            selected_track: 0,
+            selected_tracks: 1,
             selected_step: None,
             prev_selected_step: None,
         }
@@ -146,6 +148,27 @@ impl SequencerState {
             PlayMode::Song => self.song.entries[self.song_position as usize],
         };
         &self.patterns[pattern_index as usize]
+    }
+
+    pub fn is_track_selected(&self, track: u8) -> bool {
+        self.selected_tracks & (1 << track) != 0
+    }
+
+    pub fn toggle_track(&mut self, track: u8) {
+        let selected_tracks = self.selected_tracks ^ (1 << track);
+        if selected_tracks != 0 {
+            self.selected_tracks = selected_tracks;
+        }
+        EDIT_FLAG.store(true, Ordering::Release);
+    }
+
+    pub fn select_only(&mut self, track: u8) {
+        self.selected_tracks = 1 << track;
+        EDIT_FLAG.store(true, Ordering::Release);
+    }
+
+    pub fn selected_tracks_iter(&self) -> impl Iterator<Item = u8> {
+        iter_bits(self.selected_tracks)
     }
 }
 
@@ -199,10 +222,12 @@ pub fn select_step(seq: &mut SequencerState, step_index: u8){
     EDIT_FLAG.store(true, Ordering::Release);
 }
 
-pub fn set_step(sequencer_state: &mut SequencerState, track_index: u8, step_index: u8, pitch: u8){
+pub fn set_step(sequencer_state: &mut SequencerState, tracks: u8, step_index: u8, pitch: u8){
     let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-    pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
-    // TODO: toggle active
-    pattern.tracks[track_index as usize].steps[step_index as usize].active = true;
+    for track_index in iter_bits(tracks) {
+        pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
+        // TODO: toggle active
+        pattern.tracks[track_index as usize].steps[step_index as usize].active = true;
+    }
     EDIT_FLAG.store(true, Ordering::Release);
 }

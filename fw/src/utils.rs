@@ -26,3 +26,7 @@ impl Write for FmtBuf<'_> {
         Ok(())
     }
 }
+
+pub fn iter_bits(mask: u8) -> impl Iterator<Item = u8> {
+    (0..8).filter(move |&t| mask & (1 << t) != 0)
+}

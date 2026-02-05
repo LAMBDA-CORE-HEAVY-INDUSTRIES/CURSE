@@ -1,6 +1,6 @@
 use core::sync::atomic::Ordering;
 
-use crate::sequencer::{SequencerState, PLAYING, select_step, set_step};
+use crate::{sequencer::{PLAYING, SequencerState, select_step, set_step}, utils::iter_bits};
 use rtt_target::rprintln;
 
 #[derive(Clone, Copy, Debug)]
@@ -18,15 +18,19 @@ pub enum Button {
 pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState) {
     match button {
         Button::Step(n) => {
-            let track = sequencer_state.selected_track as usize;
+            let tracks = sequencer_state.selected_tracks;
             let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-            let step = &mut pattern.tracks[track].steps[n as usize];
-            step.active = !step.active;
-            rprintln!("Step {} on track {}: {}", n, track, step.active);
+            for track_index in iter_bits(tracks) {
+                let step = &mut pattern.tracks[track_index as usize].steps[n as usize];
+                step.active = !step.active;
+                rprintln!("Step {} on track {}: {}", n, track_index, step.active);
+            }
             select_step(sequencer_state, n);
         }
         Button::Track(n) => {
-            sequencer_state.selected_track = n;
+            sequencer_state.select_only(n);
+            // TODO: it should be possible to select multiple tracks using `toggle_track()` with
+            // some modifier key.
             rprintln!("Selected track {}", n);
         }
         Button::Pattern(n) => {
@@ -43,12 +47,11 @@ pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState)
         }
         Button::Note(n) => {
             rprintln!("note: {}", n);
-            let track = sequencer_state.selected_track;
             let selected_step = match sequencer_state.selected_step {
                 Some(s) => s,
                 None => return,
             };
-            set_step(sequencer_state, track, selected_step, n);
+            set_step(sequencer_state, sequencer_state.selected_tracks, selected_step, n);
         }
         Button::OctaveUp => {
             rprintln!("octave up");
