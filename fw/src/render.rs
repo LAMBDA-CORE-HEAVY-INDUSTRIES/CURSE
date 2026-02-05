@@ -8,7 +8,11 @@ use crate::utils::FmtBuf;
 
 // const GRID_COLOR: u32 = 0x3F9834;
 // const GRID_COLOR: u32 = 0xD79128;
-const GRID_COLOR: u32 = 0x134213;
+const COLOR_GRID_FG: u32 = 0x134213;
+const COLOR_CELL_BG: u32 = 0x121212;
+const COLOR_CELL_ACTIVE_BG: u32 = 0x444444;
+const COLOR_CELL_SECONDARY_BG: u32 = 0x000000;
+const COLOR_CELL_SELECTED_BG: u32 = 0x05b669;
 // const GRID_COLOR: u32 = 0x05b669;
 const NUM_STEPS: u16 = 16;
 const ROW_HEIGHT: u16 = 64;
@@ -31,12 +35,12 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     for (i, label) in TRACK_LABELS.iter().enumerate() {
         let y1 = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let y2 = y1 + ROW_HEIGHT;
-        let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, GRID_COLOR, false);
-        let _ = display.write_text(label, GRID_LEFT - 40, y1 + 25, None, GRID_COLOR);
+        let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
+        let _ = display.write_text(label, GRID_LEFT - 40, y1 + 25, None, COLOR_GRID_FG);
     }
     for n in 1..NUM_STEPS {
         let x = GRID_LEFT + (n * CELL_WIDTH);
-        let _ = display.draw_line(x, GRID_TOP, x, ROW_HEIGHT * 9 - 24, GRID_COLOR);
+        let _ = display.draw_line(x, GRID_TOP, x, ROW_HEIGHT * 9 - 24, COLOR_GRID_FG);
     }
 
     for n in 0..NUM_STEPS {
@@ -50,8 +54,8 @@ pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
     step_index: u8,
     active: bool,
 ) {
-    let color = if step_index % 4 == 0 { 0x000000 } else { 0x121212 };
-    let bg_color = if active { 0x444444 } else { color };
+    let color = if step_index % 4 == 0 { COLOR_CELL_SECONDARY_BG } else { COLOR_CELL_BG };
+    let bg_color = if active { COLOR_CELL_ACTIVE_BG } else { color };
     for (i, _label) in TRACK_LABELS.iter().enumerate() {
         let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
         let text_y = y + (ROW_HEIGHT / 2) - 6;
@@ -69,13 +73,12 @@ pub fn render_selected_step<I: lt7683::LT7683Interface, RESET: OutputPin>(
     sequencer_state: &SequencerState,
     step_index: u8,
 ) {
-    let bg_color = 0xFFFFFF;
     let i = sequencer_state.selected_track as usize;
     let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
     let text_y = y + (ROW_HEIGHT / 2) - 6;
     let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
     let text_x = x + (CELL_WIDTH / 2) - 6;
-    let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
+    let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  COLOR_CELL_SELECTED_BG, true);
     let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
     let step = pattern.tracks[i].steps[step_index as usize];
     let _ = display.write_text(step.as_str(), text_x, text_y, None, 0x00000);
