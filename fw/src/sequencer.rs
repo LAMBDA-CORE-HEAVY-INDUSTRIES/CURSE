@@ -162,13 +162,17 @@ impl SequencerState {
         EDIT_FLAG.store(true, Ordering::Release);
     }
 
-    pub fn select_only(&mut self, track: u8) {
+    pub fn select_only_track(&mut self, track: u8) {
         self.selected_tracks = 1 << track;
         EDIT_FLAG.store(true, Ordering::Release);
     }
 
     pub fn selected_tracks_iter(&self) -> impl Iterator<Item = u8> {
         iter_bits(self.selected_tracks)
+    }
+
+    pub fn get_all_tracks(&self) -> u8 {
+        0xFF
     }
 }
 

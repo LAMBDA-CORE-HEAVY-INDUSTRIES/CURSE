@@ -28,7 +28,7 @@ pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState)
             select_step(sequencer_state, n);
         }
         Button::Track(n) => {
-            sequencer_state.select_only(n);
+            sequencer_state.select_only_track(n);
             // TODO: it should be possible to select multiple tracks using `toggle_track()` with
             // some modifier key.
             rprintln!("Selected track {}", n);

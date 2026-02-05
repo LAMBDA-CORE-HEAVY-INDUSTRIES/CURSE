@@ -21,7 +21,6 @@ const GRID_RIGHT: u16 = 1000;
 const GRID_TOP: u16 = 40;
 const CELL_WIDTH: u16 = (GRID_RIGHT - GRID_LEFT) / NUM_STEPS;
 const TRACK_LABELS: [&str; 8] = ["00", "01", "02", "03", "04", "05", "06", "07"];
-const NUM_TRACKS: usize = TRACK_LABELS.len();
 
 pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,
@@ -56,14 +55,14 @@ pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
 ) {
     let color = if step_index % 4 == 0 { COLOR_CELL_SECONDARY_BG } else { COLOR_CELL_BG };
     let bg_color = if active { COLOR_CELL_ACTIVE_BG } else { color };
-    for (i, _label) in TRACK_LABELS.iter().enumerate() {
-        let y = GRID_TOP + (i as u16) * ROW_HEIGHT;
+    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+        let y = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
         let text_y = y + (ROW_HEIGHT / 2) - 6;
         let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
         let text_x = x + (CELL_WIDTH / 2) - 6;
         let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1,  bg_color, true);
         let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-        let step = pattern.tracks[i].steps[step_index as usize];
+        let step = pattern.tracks[track_index as usize].steps[step_index as usize];
         let _ = display.write_text(step.as_str(), text_x, text_y, None, if step.active && step.pitch != 0 {0x949494 } else { 0x333333 });
     }
 }
