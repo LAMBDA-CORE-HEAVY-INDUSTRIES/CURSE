@@ -12,8 +12,23 @@ pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
-pub static EDIT_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
+
+pub const DIRTY_STEP_SELECTION: u8 = 0x01;
+pub const DIRTY_TRACK_SELECTION: u8 = 0x02;
+pub const DIRTY_NOTE_DATA: u8 = 0x04;
+pub const DIRTY_BPM: u8 = 0x08;
+pub const DIRTY_PATTERN: u8 = 0x10;
+
+static DIRTY: AtomicU8 = AtomicU8::new(0);
+
+pub fn mark_dirty(flags: u8) {
+    DIRTY.fetch_or(flags, Ordering::Release);
+}
+
+pub fn take_dirty() -> u8 {
+    DIRTY.swap(0, Ordering::Acquire)
+}
 
 pub const MAX_TRACKS: usize = 8;
 pub const MAX_STEPS: usize = 16;
@@ -158,13 +173,13 @@ impl SequencerState {
         let selected_tracks = self.selected_tracks ^ (1 << track);
         if selected_tracks != 0 {
             self.selected_tracks = selected_tracks;
+            mark_dirty(DIRTY_TRACK_SELECTION);
         }
-        EDIT_FLAG.store(true, Ordering::Release);
     }
 
     pub fn select_only_track(&mut self, track: u8) {
         self.selected_tracks = 1 << track;
-        EDIT_FLAG.store(true, Ordering::Release);
+        mark_dirty(DIRTY_TRACK_SELECTION);
     }
 
     pub fn selected_tracks_iter(&self) -> impl Iterator<Item = u8> {
@@ -220,18 +235,18 @@ pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
     timer.start(tick_freq.Hz()).unwrap();
 }
 
-pub fn select_step(seq: &mut SequencerState, step_index: u8){
+pub fn select_step(seq: &mut SequencerState, step_index: u8) {
     seq.prev_selected_step = seq.selected_step;
     seq.selected_step = Some(step_index);
-    EDIT_FLAG.store(true, Ordering::Release);
+    mark_dirty(DIRTY_STEP_SELECTION);
 }
 
-pub fn set_step(sequencer_state: &mut SequencerState, tracks: u8, step_index: u8, pitch: u8){
+pub fn set_step(sequencer_state: &mut SequencerState, tracks: u8, step_index: u8, pitch: u8) {
     let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
     for track_index in iter_bits(tracks) {
         pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
         // TODO: toggle active
         pattern.tracks[track_index as usize].steps[step_index as usize].active = true;
     }
-    EDIT_FLAG.store(true, Ordering::Release);
+    mark_dirty(DIRTY_NOTE_DATA);
 }

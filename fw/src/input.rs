@@ -1,6 +1,7 @@
 use core::sync::atomic::Ordering;
 
-use crate::{sequencer::{PLAYING, SequencerState, select_step, set_step}, utils::iter_bits};
+use crate::sequencer::{mark_dirty, select_step, set_step, DIRTY_NOTE_DATA, PLAYING, SequencerState};
+use crate::utils::iter_bits;
 use rtt_target::rprintln;
 
 #[derive(Clone, Copy, Debug)]
@@ -25,6 +26,7 @@ pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState)
                 step.active = !step.active;
                 rprintln!("Step {} on track {}: {}", n, track_index, step.active);
             }
+            mark_dirty(DIRTY_NOTE_DATA);
             select_step(sequencer_state, n);
         }
         Button::Track(n) => {

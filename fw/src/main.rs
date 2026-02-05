@@ -7,7 +7,10 @@ use core::sync::atomic::Ordering;
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
 use curse::render::{render, render_cells, render_column, render_track_label, CellHighlight};
-use curse::sequencer::{CURRENT_STEP, EDIT_FLAG, SEQ, STEP_FLAG, set_bpm};
+use curse::sequencer::{
+    take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ,
+    STEP_FLAG, set_bpm,
+};
 use curse::utils::iter_bits;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
@@ -129,23 +132,37 @@ fn main() -> ! {
                 render_column(&mut display, &sequencer_state, active_step, CellHighlight::Playing);
                 render_column(&mut display, &sequencer_state, inactive_step, CellHighlight::None);
             }
-            if EDIT_FLAG.swap(false, Ordering::Acquire) {
-                // Clear previous step if it changed
-                if let Some(prev) = sequencer_state.prev_selected_step {
-                    if sequencer_state.selected_step != Some(prev) {
-                        render_column(&mut display, &sequencer_state, prev, CellHighlight::None);
+            let dirty = take_dirty();
+
+            if dirty != 0 {
+                if dirty & DIRTY_STEP_SELECTION != 0 {
+                    if let Some(prev) = sequencer_state.prev_selected_step {
+                        if sequencer_state.selected_step != Some(prev) {
+                            render_column(&mut display, &sequencer_state, prev, CellHighlight::None);
+                        }
+                    }
+                    if let Some(curr) = sequencer_state.selected_step {
+                        render_column(&mut display, &sequencer_state, curr, CellHighlight::None);
+                        render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
                     }
                 }
-                if let Some(curr) = sequencer_state.selected_step {
-                    // Always clear current step of all tracks before highlighting selected
-                    render_column(&mut display, &sequencer_state, curr, CellHighlight::None);
-                    render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
+                if dirty & DIRTY_TRACK_SELECTION != 0 {
+                    if dirty & DIRTY_STEP_SELECTION == 0 {
+                        if let Some(curr) = sequencer_state.selected_step {
+                            render_column(&mut display, &sequencer_state, curr, CellHighlight::None);
+                            render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
+                        }
+                    }
+                    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+                        let selected = sequencer_state.is_track_selected(track_index);
+                        render_track_label(&mut display, track_index, selected);
+                    }
                 }
-                for track_index in iter_bits(sequencer_state.get_all_tracks()) {
-                    let selected = sequencer_state.is_track_selected(track_index);
-                    render_track_label(&mut display, track_index, selected);
+                if dirty & DIRTY_NOTE_DATA != 0 {
+                    if let Some(curr) = sequencer_state.selected_step {
+                        render_cells(&mut display, &sequencer_state, curr, sequencer_state.selected_tracks, CellHighlight::Selected);
+                    }
                 }
-
             }
         }
     }
