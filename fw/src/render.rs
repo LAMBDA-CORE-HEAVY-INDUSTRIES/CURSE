@@ -13,6 +13,8 @@ const COLOR_CELL_BG: u32 = 0x121212;
 const COLOR_CELL_ACTIVE_BG: u32 = 0x444444;
 const COLOR_CELL_SECONDARY_BG: u32 = 0x000000;
 const COLOR_CELL_SELECTED_BG: u32 = 0x05b669;
+const COLOR_TRACK_LABEL_FG: u32 = COLOR_GRID_FG;
+const COLOR_TRACK_LABEL_ACTIVE_FG: u32 = 0xF07826;
 // const GRID_COLOR: u32 = 0x05b669;
 const NUM_STEPS: u16 = 16;
 const ROW_HEIGHT: u16 = 64;
@@ -31,11 +33,8 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     let mut fmt = FmtBuf::new(&mut buf);
     write!(fmt, "BPM:{}", BPM.load(Ordering::Relaxed)).unwrap();
     let _ = display.write_text_scaled(fmt.as_str(), GRID_RIGHT - 160, 6, None, 0xf07826, 2, 2);
-    for (i, label) in TRACK_LABELS.iter().enumerate() {
-        let y1 = GRID_TOP + (i as u16) * ROW_HEIGHT;
-        let y2 = y1 + ROW_HEIGHT;
-        let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
-        let _ = display.write_text(label, GRID_LEFT - 40, y1 + 25, None, COLOR_GRID_FG);
+    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+        render_track_label(display, track_index, false);
     }
     for n in 1..NUM_STEPS {
         let x = GRID_LEFT + (n * CELL_WIDTH);
@@ -46,6 +45,19 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
         render_steps(display, sequencer_state, n as u8, false);
     }
 }
+
+pub fn render_track_label<I: lt7683::LT7683Interface, RESET: OutputPin>(
+    display: &mut lt7683::LT7683<I, RESET>,
+    track_index: u8,
+    selected: bool,
+) {
+    let color = if selected { COLOR_TRACK_LABEL_ACTIVE_FG } else { COLOR_TRACK_LABEL_FG };
+    let y1 = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
+    let y2 = y1 + ROW_HEIGHT;
+    let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
+    let _ = display.write_text(TRACK_LABELS[track_index as usize], GRID_LEFT - 40, y1 + 25, None, color);
+}
+
 
 pub fn render_steps<I: lt7683::LT7683Interface, RESET: OutputPin>(
     display: &mut lt7683::LT7683<I, RESET>,

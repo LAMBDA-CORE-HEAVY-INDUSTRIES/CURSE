@@ -6,8 +6,9 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::{render, render_selected_step, render_steps};
+use curse::render::{render, render_selected_step, render_steps, render_track_label};
 use curse::sequencer::{CURRENT_STEP, EDIT_FLAG, SEQ, STEP_FLAG, set_bpm};
+use curse::utils::iter_bits;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
 use stm32f4xx_hal::timer::Event;
@@ -134,6 +135,11 @@ fn main() -> ! {
                 }
                 if let Some(curr) = sequencer_state.selected_step {
                     render_selected_step(&mut display, &sequencer_state, curr);
+                }
+
+                for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+                    let selected = sequencer_state.is_track_selected(track_index);
+                    render_track_label(&mut display, track_index, selected);
                 }
 
             }
