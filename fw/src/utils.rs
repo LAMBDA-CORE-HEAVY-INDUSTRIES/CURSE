@@ -27,10 +27,24 @@ impl Write for FmtBuf<'_> {
     }
 }
 
-pub fn iter_bits_u8(mask: u8) -> impl Iterator<Item = u8> {
-    (0..8).filter(move |&t| mask & (1 << t) != 0)
+pub fn iter_bits_u8(mut mask: u8) -> impl Iterator<Item = u8> {
+    core::iter::from_fn(move || {
+        if mask == 0 {
+            return None;
+        }
+        let bit = mask.trailing_zeros() as u8; // index of lowest set bit
+        mask &= mask - 1; // clear that bit
+        Some(bit)
+    })
 }
 
-pub fn iter_bits_u16(mask: u16) -> impl Iterator<Item = u8> {
-    (0..16).filter(move |&t| mask & (1 << t) != 0)
+pub fn iter_bits_u16(mut mask: u16) -> impl Iterator<Item = u8> {
+    core::iter::from_fn(move || {
+        if mask == 0 {
+            return None;
+        }
+        let bit = mask.trailing_zeros() as u8; // index of lowest set bit
+        mask &= mask - 1; // clear that bit
+        Some(bit)
+    })
 }
