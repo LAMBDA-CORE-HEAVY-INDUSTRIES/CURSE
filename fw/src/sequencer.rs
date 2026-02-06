@@ -202,7 +202,7 @@ fn TIM3() {
     }
     let tick = TICK.fetch_add(1, Ordering::Relaxed);
     let ticks_per_step = PPQN.load(Ordering::Relaxed) / 4;
-    if tick > ticks_per_step {
+    if tick >= ticks_per_step {
         TICK.store(0, Ordering::Relaxed);
         let step = NEXT_STEP.load(Ordering::Relaxed);
         CURRENT_STEP.store(step, Ordering::Relaxed);
