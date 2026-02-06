@@ -1,5 +1,4 @@
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
-use rtt_target::rprintln;
 use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
 use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
@@ -10,9 +9,11 @@ pub static BPM: AtomicU32 = AtomicU32::new(120);
 pub static PPQN: AtomicU32 = AtomicU32::new(24);
 pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
-pub static TICK: AtomicU32 = AtomicU32::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
+pub static ACCUM: AtomicU32 = AtomicU32::new(0);
+pub static BASE_HZ: AtomicU32 = AtomicU32::new(1000);
+pub static STEP_THRESHOLD: AtomicU32 = AtomicU32::new(0);
 
 pub const DIRTY_STEP_SELECTION: u8 = 0x01;
 pub const DIRTY_TRACK_SELECTION: u8 = 0x02;
@@ -200,10 +201,16 @@ fn TIM3() {
     if !PLAYING.load(Ordering::Relaxed) {
         return;
     }
-    let tick = TICK.fetch_add(1, Ordering::Relaxed);
-    let ticks_per_step = PPQN.load(Ordering::Relaxed) / 4;
-    if tick >= ticks_per_step {
-        TICK.store(0, Ordering::Relaxed);
+    let inc = BPM
+        .load(Ordering::Relaxed)
+        .saturating_mul(PPQN.load(Ordering::Relaxed));
+    let threshold = STEP_THRESHOLD.load(Ordering::Relaxed);
+    if threshold == 0 {
+        return;
+    }
+    let mut acc = ACCUM.load(Ordering::Relaxed).saturating_add(inc);
+    if acc >= threshold {
+        acc -= threshold;
         let step = NEXT_STEP.load(Ordering::Relaxed);
         CURRENT_STEP.store(step, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
@@ -219,20 +226,38 @@ fn TIM3() {
             let length = pattern.tracks[0].length;
             NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
             if pattern.tracks[2].steps[step as usize].active {
-                rprintln!("step {} is active", step);
+                // rprintln!("step {} is active", step);
                 gpioa.bsrr().write(|w| w.bs10().set_bit());
             } else {
-                rprintln!("step {} is not active", step);
+                // rprintln!("step {} is not active", step);
                 gpioa.bsrr().write(|w| w.br10().set_bit());
             }
         }
+    }
+    ACCUM.store(acc, Ordering::Relaxed);
+}
+
+fn pulses_per_step_from_ppqn(ppqn: u32) -> Option<u32> {
+    match ppqn {
+        4 => Some(1),
+        24 => Some(6),
+        _ => None,
     }
 }
 
 pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
     BPM.store(bpm, Ordering::Relaxed);
-    let tick_freq = (bpm * PPQN.load(Ordering::Relaxed)) / 60;
-    timer.start(tick_freq.Hz()).unwrap();
+    let base_hz = 1000;
+    BASE_HZ.store(base_hz, Ordering::Relaxed);
+    let ppqn = PPQN.load(Ordering::Relaxed);
+    let threshold = pulses_per_step_from_ppqn(ppqn).map_or(0, |pulses_per_step| {
+        60u32
+            .saturating_mul(base_hz)
+            .saturating_mul(pulses_per_step)
+    });
+    STEP_THRESHOLD.store(threshold, Ordering::Relaxed);
+    ACCUM.store(0, Ordering::Relaxed);
+    timer.start(base_hz.Hz()).unwrap();
 }
 
 pub fn select_step(seq: &mut SequencerState, step_index: u8) {
