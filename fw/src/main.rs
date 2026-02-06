@@ -9,7 +9,7 @@ use cortex_m_rt::entry;
 use curse::render::{render, render_cells, render_column, render_track_label, CellHighlight};
 use curse::sequencer::{
     take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ,
-    STEP_FLAG, set_bpm,
+    STEP_FLAG, set_bpm, PLAYING
 };
 use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -41,6 +41,10 @@ fn main() -> ! {
             .into_push_pull_output_in_state(hal::gpio::PinState::High);
 
         let mut timer = dp.TIM3.counter_hz(&clocks);
+
+        // enable debug in sleep
+        unsafe { &*pac::DBGMCU::ptr() }.cr().modify(|_, w| w.dbg_sleep().set_bit());
+
         timer.listen(Event::Update);
         unsafe {
             cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM3);
@@ -136,6 +140,14 @@ fn main() -> ! {
             if step_moved {
                 dirty_steps |= 1 << playing_step;
                 dirty_steps |= 1 << prev_step;
+            }
+
+            #[cfg(not(feature = "keyboard-input"))]
+            if PLAYING.load(Ordering::Relaxed) && !step_moved && dirty == 0 {
+                // TODO: could use some other interrupt source to wake from,
+                // otherwise loop will spin when not playing
+                cortex_m::asm::wfi();
+                continue
             }
             if dirty & DIRTY_STEP_SELECTION != 0 {
                 if let Some(prev) = sequencer_state.prev_selected_step {
