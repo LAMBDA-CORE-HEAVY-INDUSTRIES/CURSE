@@ -4,7 +4,7 @@ use stm32f4xx_hal::pac::{self, TIM3};
 use stm32f4xx_hal::timer::CounterHz;
 use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
 
-use crate::utils::iter_bits;
+use crate::utils::iter_bits_u8;
 
 pub static BPM: AtomicU32 = AtomicU32::new(120);
 pub static PPQN: AtomicU32 = AtomicU32::new(24);
@@ -183,7 +183,7 @@ impl SequencerState {
     }
 
     pub fn selected_tracks_iter(&self) -> impl Iterator<Item = u8> {
-        iter_bits(self.selected_tracks)
+        iter_bits_u8(self.selected_tracks)
     }
 
     pub fn get_all_tracks(&self) -> u8 {
@@ -243,7 +243,7 @@ pub fn select_step(seq: &mut SequencerState, step_index: u8) {
 
 pub fn set_step(sequencer_state: &mut SequencerState, tracks: u8, step_index: u8, pitch: u8) {
     let pattern = &mut sequencer_state.patterns[sequencer_state.visible_pattern as usize];
-    for track_index in iter_bits(tracks) {
+    for track_index in iter_bits_u8(tracks) {
         pattern.tracks[track_index as usize].steps[step_index as usize].pitch = pitch;
         // TODO: toggle active
         pattern.tracks[track_index as usize].steps[step_index as usize].active = true;

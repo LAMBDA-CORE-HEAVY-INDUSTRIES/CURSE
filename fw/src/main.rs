@@ -11,7 +11,7 @@ use curse::sequencer::{
     take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ,
     STEP_FLAG, set_bpm,
 };
-use curse::utils::iter_bits;
+use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
 use stm32f4xx_hal::timer::Event;
@@ -160,7 +160,7 @@ fn main() -> ! {
                 let all_tracks = sequencer_state.get_all_tracks();
                 let unselected_tracks = all_tracks & !selected_tracks;
 
-                for step in (0..16u8).filter(|&s| dirty_steps & (1 << s) != 0) {
+                for step in iter_bits_u16(dirty_steps) {
                     let is_playing = step == playing_step;
                     let is_selected = selected_step == Some(step);
                     let base = if is_playing { CellHighlight::Playing } else { CellHighlight::None };
@@ -173,7 +173,7 @@ fn main() -> ! {
                 }
             }
             if dirty_labels {
-                for track in iter_bits(sequencer_state.get_all_tracks()) {
+                for track in iter_bits_u8(sequencer_state.get_all_tracks()) {
                     render_track_label(&mut display, track, sequencer_state.is_track_selected(track));
                 }
             }

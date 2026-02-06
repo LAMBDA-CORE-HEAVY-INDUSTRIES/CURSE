@@ -4,7 +4,7 @@ use core::sync::atomic::Ordering;
 use embedded_hal::digital::OutputPin;
 
 use crate::sequencer::{BPM, SequencerState};
-use crate::utils::{FmtBuf, iter_bits};
+use crate::utils::{FmtBuf, iter_bits_u8};
 
 // const GRID_COLOR: u32 = 0x3F9834;
 // const GRID_COLOR: u32 = 0xD79128;
@@ -33,7 +33,7 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
     let mut fmt = FmtBuf::new(&mut buf);
     write!(fmt, "BPM:{}", BPM.load(Ordering::Relaxed)).unwrap();
     let _ = display.write_text_scaled(fmt.as_str(), GRID_RIGHT - 160, 6, None, 0xf07826, 2, 2);
-    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+    for track_index in iter_bits_u8(sequencer_state.get_all_tracks()) {
         let y1 = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
         let y2 = y1 + ROW_HEIGHT;
         let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
@@ -102,7 +102,7 @@ pub fn render_column<I: lt7683::LT7683Interface, RESET: OutputPin>(
     step_index: u8,
     highlight: CellHighlight,
 ) {
-    for track_index in iter_bits(sequencer_state.get_all_tracks()) {
+    for track_index in iter_bits_u8(sequencer_state.get_all_tracks()) {
         render_cell(display, sequencer_state, track_index, step_index, highlight);
     }
 }
@@ -114,7 +114,7 @@ pub fn render_cells<I: lt7683::LT7683Interface, RESET: OutputPin>(
     tracks: u8,
     highlight: CellHighlight,
 ) {
-    for track_index in iter_bits(tracks) {
+    for track_index in iter_bits_u8(tracks) {
         render_cell(display, sequencer_state, track_index, step_index, highlight);
     }
 }
