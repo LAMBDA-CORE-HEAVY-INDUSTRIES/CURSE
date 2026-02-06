@@ -85,7 +85,7 @@ pub fn render_cell<I: lt7683::LT7683Interface, RESET: OutputPin>(
     let x = GRID_LEFT + (step_index as u16 * CELL_WIDTH);
     let text_y = y + (ROW_HEIGHT / 2) - 6;
     let text_x = x + (CELL_WIDTH / 2) - 6;
-    let _ = display.draw_rectangle(x + 1, y + 1, x + CELL_WIDTH - 2, y + ROW_HEIGHT - 1, bg_color, true);
+    let _ = display.bte_solid_fill(x + 1, y + 1, CELL_WIDTH - 2, ROW_HEIGHT - 1, bg_color);
 
     let pattern = &sequencer_state.patterns[sequencer_state.visible_pattern as usize];
     let step = pattern.tracks[track_index as usize].steps[step_index as usize];
