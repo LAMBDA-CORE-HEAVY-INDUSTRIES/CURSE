@@ -7,20 +7,26 @@ use core::sync::atomic::Ordering;
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
 use curse::render::{
-    render, render_cells, render_column, render_playhead_marker, render_track_label, CellHighlight,
+    render, render_bpm, render_cells, render_column, render_pattern_indicator,
+    render_playhead_marker, render_track_label, CellHighlight,
 };
 use curse::sequencer::{
-    rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_RT_CACHE,
-    DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ, STEP_FLAG, PLAYING
+    rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM, DIRTY_NOTE_DATA,
+    DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ, STEP_FLAG,
+    PLAYING,
 };
 use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
+use rtt_target::rprintln;
 use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 
 #[cfg(feature = "keyboard-input")]
 use curse::input::{handle_button_press, key_to_button};
+
+#[cfg(feature = "perf")]
+use curse::perf::{init_cycle_counter, measure_cycles};
 
 #[entry]
 fn main() -> ! {
@@ -43,6 +49,9 @@ fn main() -> ! {
             .into_push_pull_output_in_state(hal::gpio::PinState::High);
 
         let mut timer = dp.TIM3.counter_hz(&clocks);
+
+        #[cfg(feature = "perf")]
+        init_cycle_counter();
 
         // enable debug in sleep
         unsafe { &*pac::DBGMCU::ptr() }.cr().modify(|_, w| w.dbg_sleep().set_bit());
@@ -170,6 +179,12 @@ fn main() -> ! {
             }
             if dirty & DIRTY_TRACK_SELECTION != 0 {
                 dirty_labels = true;
+            }
+            if dirty & DIRTY_PATTERN != 0 {
+                render_pattern_indicator(&mut display, &sequencer_state);
+            }
+            if dirty & DIRTY_BPM != 0 {
+                render_bpm(&mut display);
             }
             // Render all dirty steps
             if dirty_steps != 0 {

@@ -295,6 +295,7 @@ fn pulses_per_step_from_ppqn(ppqn: u32) -> Option<u32> {
 
 pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
     BPM.store(bpm, Ordering::Relaxed);
+    mark_dirty(DIRTY_BPM);
     let base_hz = 1000;
     BASE_HZ.store(base_hz, Ordering::Relaxed);
     let ppqn = PPQN.load(Ordering::Relaxed);
