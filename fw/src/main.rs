@@ -6,7 +6,9 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::{render, render_cells, render_column, render_track_label, CellHighlight};
+use curse::render::{
+    render, render_cells, render_column, render_playhead_marker, render_track_label, CellHighlight,
+};
 use curse::sequencer::{
     take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ,
     STEP_FLAG, set_bpm, PLAYING
@@ -75,7 +77,7 @@ fn main() -> ! {
         display.clear_screen(0x00).unwrap();
 
         let sequencer_state = unsafe { &mut *(&raw mut SEQ) };
-        set_bpm(&mut timer, 40);
+        set_bpm(&mut timer, 140);
 
         // For testing
         let pattern = &mut sequencer_state.patterns[0];
@@ -138,8 +140,8 @@ fn main() -> ! {
             let prev_step = if playing_step == 0 { max_steps - 1 } else { playing_step - 1 };
 
             if step_moved {
-                dirty_steps |= 1 << playing_step;
-                dirty_steps |= 1 << prev_step;
+                render_playhead_marker(&mut display, prev_step, false);
+                render_playhead_marker(&mut display, playing_step, true);
             }
 
             #[cfg(not(feature = "keyboard-input"))]

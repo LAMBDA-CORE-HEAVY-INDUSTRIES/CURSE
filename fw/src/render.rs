@@ -13,6 +13,7 @@ const COLOR_CELL_BG: u32 = 0x121212;
 const COLOR_CELL_ACTIVE_BG: u32 = 0x444444;
 const COLOR_CELL_SECONDARY_BG: u32 = 0x000000;
 const COLOR_CELL_SELECTED_BG: u32 = 0x05b669;
+const COLOR_PLAYHEAD_FG: u32 = 0xF07826;
 const COLOR_TRACK_LABEL_FG: u32 = COLOR_GRID_FG;
 const COLOR_TRACK_LABEL_ACTIVE_FG: u32 = 0xF07826;
 // const GRID_COLOR: u32 = 0x05b669;
@@ -77,7 +78,7 @@ pub fn render_cell<I: lt7683::LT7683Interface, RESET: OutputPin>(
     let base_bg = if step_index % 4 == 0 { COLOR_CELL_SECONDARY_BG } else { COLOR_CELL_BG };
     let bg_color = match highlight {
         CellHighlight::None => base_bg,
-        CellHighlight::Playing => COLOR_CELL_ACTIVE_BG,
+        CellHighlight::Playing => base_bg,
         CellHighlight::Selected => COLOR_CELL_SELECTED_BG,
     };
 
@@ -117,4 +118,18 @@ pub fn render_cells<I: lt7683::LT7683Interface, RESET: OutputPin>(
     for track_index in iter_bits_u8(tracks) {
         render_cell(display, sequencer_state, track_index, step_index, highlight);
     }
+}
+
+pub fn render_playhead_marker<I: lt7683::LT7683Interface, RESET: OutputPin>(
+    display: &mut lt7683::LT7683<I, RESET>,
+    step_index: u8,
+    is_playing: bool,
+) {
+    let color = if is_playing { COLOR_PLAYHEAD_FG } else { COLOR_GRID_FG };
+    let x1 = GRID_LEFT + (step_index as u16 * CELL_WIDTH) + 1;
+    let x2 = x1 + CELL_WIDTH - 2;
+    let y_top = GRID_TOP;
+    let y_bottom = GRID_TOP + (ROW_HEIGHT * 8);
+    let _ = display.draw_line(x1, y_top, x2, y_top, color);
+    let _ = display.draw_line(x1, y_bottom, x2, y_bottom, color);
 }
