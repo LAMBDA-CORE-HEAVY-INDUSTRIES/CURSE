@@ -68,7 +68,7 @@ pub fn render<I: lt7683::LT7683Interface, RESET: OutputPin>(
         let y1 = GRID_TOP + (track_index as u16) * ROW_HEIGHT;
         let y2 = y1 + ROW_HEIGHT;
         let _ = display.draw_rectangle(GRID_LEFT, y1, GRID_RIGHT, y2, COLOR_GRID_FG, false);
-        render_track_label(display, track_index, false);
+        render_track_label(display, track_index, sequencer_state.is_track_selected(track_index));
     }
     for n in 1..NUM_STEPS {
         let x = GRID_LEFT + (n * CELL_WIDTH);
