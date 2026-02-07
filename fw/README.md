@@ -60,3 +60,13 @@ Key mappings:
 - `1-0, q-y`: Steps 0-15
 - `a-k`: Tracks 0-7
 - `Space`: Play/Pause, `x`: Stop
+
+## Raw RTT input
+
+`cargo embed` is line-buffered for RTT input. Which is a bit annoying as you have to press enter
+after every key press. For per-key input, use the helper tool:
+
+```bash
+cd fw/tools/rtt_raw
+cargo run --release -- --chip STM32F411RE --down 0
+```
