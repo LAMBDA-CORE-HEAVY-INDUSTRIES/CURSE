@@ -15,12 +15,19 @@ pub static ACCUM: AtomicU32 = AtomicU32::new(0);
 pub static BASE_HZ: AtomicU32 = AtomicU32::new(1000);
 pub static STEP_THRESHOLD: AtomicU32 = AtomicU32::new(0);
 
+pub const MAX_TRACKS: usize = 8;
+pub const MAX_STEPS: usize = 16;
+pub const MAX_PATTERNS: usize = 16;
+pub const MAX_SONG_LENGTH: usize = 64;
+
+pub static mut SEQ: SequencerState = SequencerState::new();
+
 pub const DIRTY_STEP_SELECTION: u8 = 0x01;
 pub const DIRTY_TRACK_SELECTION: u8 = 0x02;
 pub const DIRTY_NOTE_DATA: u8 = 0x04;
 pub const DIRTY_BPM: u8 = 0x08;
 pub const DIRTY_PATTERN: u8 = 0x10;
-
+pub const DIRTY_RT_CACHE: u8 = 0x20;
 static DIRTY: AtomicU8 = AtomicU8::new(0);
 
 pub fn mark_dirty(flags: u8) {
@@ -31,12 +38,26 @@ pub fn take_dirty() -> u8 {
     DIRTY.swap(0, Ordering::Acquire)
 }
 
-pub const MAX_TRACKS: usize = 8;
-pub const MAX_STEPS: usize = 16;
-pub const MAX_PATTERNS: usize = 16;
-pub const MAX_SONG_LENGTH: usize = 64;
+pub struct RtCache {
+    pub gate_masks: [u16; MAX_TRACKS],
+    pub pitches: [[u8; MAX_STEPS]; MAX_TRACKS],
+    pub lengths: [u8; MAX_TRACKS],
+    pub gate_lengths: [u8; MAX_TRACKS],
+}
 
-pub static mut SEQ: SequencerState = SequencerState::new();
+impl RtCache {
+    pub const fn new() -> Self {
+        Self {
+            gate_masks: [0; MAX_TRACKS],
+            pitches: [[0; MAX_STEPS]; MAX_TRACKS],
+            lengths: [0; MAX_TRACKS],
+            gate_lengths: [0; MAX_TRACKS],
+        }
+    }
+}
+
+static mut RT_CACHE: [RtCache; 2] = [RtCache::new(), RtCache::new()];
+static ACTIVE_CACHE: AtomicU8 = AtomicU8::new(0);
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
@@ -107,9 +128,9 @@ impl Pattern {
         for track in &mut self.tracks {
             track.length = len;
         }
+        mark_dirty(DIRTY_PATTERN | DIRTY_RT_CACHE);
     }
 }
-
 
 pub struct SequencerState {
     pub max_steps: u8,
@@ -219,22 +240,49 @@ fn TIM3() {
         // TODO: Gate length
         unsafe {
             let gpioa = &(*pac::GPIOA::ptr());
-            let sequencer_state = { &mut *(&raw mut SEQ) };
-            let pattern = sequencer_state.get_playing_pattern();
+            let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
+            let cache = &RT_CACHE[cache_index as usize];
             // TODO: For now we just use the first track length. We can utilize different length
             // tracks in the future for polymetric things.
-            let length = pattern.tracks[0].length;
-            NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
-            if pattern.tracks[2].steps[step as usize].active {
-                // rprintln!("step {} is active", step);
-                gpioa.bsrr().write(|w| w.bs10().set_bit());
-            } else {
-                // rprintln!("step {} is not active", step);
-                gpioa.bsrr().write(|w| w.br10().set_bit());
+            let length = cache.lengths[0].min(MAX_STEPS as u8);
+            if length != 0 {
+                NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
+                let gate_mask = cache.gate_masks[2];
+                if gate_mask & (1u16 << step) != 0 {
+                    // rprintln!("step {} is active", step);
+                    gpioa.bsrr().write(|w| w.bs10().set_bit());
+                } else {
+                    // rprintln!("step {} is not active", step);
+                    gpioa.bsrr().write(|w| w.br10().set_bit());
+                }
             }
         }
     }
     ACCUM.store(acc, Ordering::Relaxed);
+}
+
+pub fn rebuild_rt_cache(sequencer_state: &SequencerState) {
+    let active = ACTIVE_CACHE.load(Ordering::Acquire);
+    let inactive = active ^ 1;
+    let cache = unsafe { &mut RT_CACHE[inactive as usize] };
+    let pattern = sequencer_state.get_playing_pattern();
+    for track_index in 0..MAX_TRACKS {
+        let track = &pattern.tracks[track_index];
+        cache.lengths[track_index] = track.length;
+        // Placeholder for future per-track gate length control.
+        cache.gate_lengths[track_index] = 1;
+
+        let mut mask: u16 = 0;
+        for step_index in 0..MAX_STEPS {
+            let step = track.steps[step_index];
+            cache.pitches[track_index][step_index] = step.pitch;
+            if step.active {
+                mask |= 1u16 << step_index;
+            }
+        }
+        cache.gate_masks[track_index] = mask;
+    }
+    ACTIVE_CACHE.store(inactive, Ordering::Release);
 }
 
 fn pulses_per_step_from_ppqn(ppqn: u32) -> Option<u32> {
@@ -273,5 +321,5 @@ pub fn set_step(sequencer_state: &mut SequencerState, tracks: u8, step_index: u8
         // TODO: toggle active
         pattern.tracks[track_index as usize].steps[step_index as usize].active = true;
     }
-    mark_dirty(DIRTY_NOTE_DATA);
+    mark_dirty(DIRTY_NOTE_DATA | DIRTY_RT_CACHE);
 }

@@ -10,8 +10,8 @@ use curse::render::{
     render, render_cells, render_column, render_playhead_marker, render_track_label, CellHighlight,
 };
 use curse::sequencer::{
-    take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ,
-    STEP_FLAG, set_bpm, PLAYING
+    rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_NOTE_DATA, DIRTY_RT_CACHE,
+    DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ, STEP_FLAG, PLAYING
 };
 use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -92,6 +92,7 @@ fn main() -> ! {
         pattern.tracks[7].steps[2].pitch = 60;
         pattern.tracks[7].steps[2].active = true;
 
+        rebuild_rt_cache(&sequencer_state);
         render(&mut display, &sequencer_state);
 
         #[cfg(feature = "keyboard-input")]
@@ -135,6 +136,9 @@ fn main() -> ! {
             let mut dirty_steps: u16 = 0;
             let mut dirty_labels = false;
 
+            if dirty & DIRTY_RT_CACHE != 0 {
+                rebuild_rt_cache(&sequencer_state);
+            }
             let playing_step = CURRENT_STEP.load(Ordering::Relaxed);
             let max_steps = sequencer_state.max_steps;
             let prev_step = if playing_step == 0 { max_steps - 1 } else { playing_step - 1 };
