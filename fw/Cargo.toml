@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 keyboard-input = []
+perf = []
 
 [dependencies]
 rtt-target = "0.6"
