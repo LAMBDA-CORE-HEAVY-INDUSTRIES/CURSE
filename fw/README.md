@@ -12,6 +12,15 @@
 - You can use any editor/IDE/debugger that supports Debugger Adapter Protocol. Vimspector config is already setup (see `.vimspector.json`).
 - Use `opt-level = 0` in `Cargo.toml` to preserve debug information.
 
+If things go wrong and you can't flash the firmware, hold and release reset button (b2) or connect NRST to GND and run
+  ```
+  λ probe-rs run \
+  --chip STM32F411RETx \
+  --protocol SWD \
+  --connect-under-reset \
+  target/thumbv7em-none-eabihf/debug/curse
+```
+
 ## Logging
 
 - Use `rprintln!` from `rtt-target` for logging, e.g. `rprintln!("things are happening to {}", that);`
