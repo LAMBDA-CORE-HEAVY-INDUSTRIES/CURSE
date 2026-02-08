@@ -1,7 +1,6 @@
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use stm32f4xx_hal::pac::{self, TIM3};
-use stm32f4xx_hal::timer::CounterHz;
-use stm32f4xx_hal::{interrupt, prelude::_fugit_RateExtU32};
+use stm32f4xx_hal::{interrupt, rcc::Clocks};
 
 use crate::utils::iter_bits_u8;
 
@@ -11,9 +10,9 @@ pub static NEXT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
-pub static ACCUM: AtomicU32 = AtomicU32::new(0);
-pub static BASE_HZ: AtomicU32 = AtomicU32::new(1000);
-pub static STEP_THRESHOLD: AtomicU32 = AtomicU32::new(0);
+
+const TIMER_HZ: u32 = 1_000_000;
+const MAX_SEGMENT_US: u32 = 0xFFFF;
 
 pub const MAX_TRACKS: usize = 8;
 pub const MAX_STEPS: usize = 16;
@@ -58,6 +57,27 @@ impl RtCache {
 
 static mut RT_CACHE: [RtCache; 2] = [RtCache::new(), RtCache::new()];
 static ACTIVE_CACHE: AtomicU8 = AtomicU8::new(0);
+
+struct StepInterval {
+    base_us: u32,
+    rem: u32,
+    denom: u32,
+    acc: u32,
+}
+
+impl StepInterval {
+    const fn new() -> Self {
+        Self {
+            base_us: 1,
+            rem: 0,
+            denom: 1,
+            acc: 0,
+        }
+    }
+}
+
+static mut STEP_INTERVAL: StepInterval = StepInterval::new();
+static mut REMAINING_US: u32 = 0;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
@@ -216,49 +236,49 @@ impl SequencerState {
 #[interrupt]
 fn TIM3() {
     unsafe {
-        // Clear reason for the generated interrupt request
-        (*pac::TIM3::ptr()).sr().modify(|_, w| w.uif().clear_bit());
+        // Clear interrupt flags (compare + update)
+        let tim3 = &*pac::TIM3::ptr();
+        tim3.sr()
+            .modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
     }
-    if !PLAYING.load(Ordering::Relaxed) {
-        return;
-    }
-    let inc = BPM
-        .load(Ordering::Relaxed)
-        .saturating_mul(PPQN.load(Ordering::Relaxed));
-    let threshold = STEP_THRESHOLD.load(Ordering::Relaxed);
-    if threshold == 0 {
-        return;
-    }
-    let mut acc = ACCUM.load(Ordering::Relaxed).saturating_add(inc);
-    if acc >= threshold {
-        acc -= threshold;
-        let step = NEXT_STEP.load(Ordering::Relaxed);
-        CURRENT_STEP.store(step, Ordering::Relaxed);
-        STEP_FLAG.store(true, Ordering::Release);
-        // NOTE: We might want to use shift register if running out of GPIO.
-        // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
-        // TODO: Gate length
-        unsafe {
-            let gpioa = &(*pac::GPIOA::ptr());
-            let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
-            let cache = &RT_CACHE[cache_index as usize];
-            // TODO: For now we just use the first track length. We can utilize different length
-            // tracks in the future for polymetric things.
-            let length = cache.lengths[0].min(MAX_STEPS as u8);
-            if length != 0 {
-                NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
-                let gate_mask = cache.gate_masks[2];
-                if gate_mask & (1u16 << step) != 0 {
-                    // rprintln!("step {} is active", step);
-                    gpioa.bsrr().write(|w| w.bs10().set_bit());
-                } else {
-                    // rprintln!("step {} is not active", step);
-                    gpioa.bsrr().write(|w| w.br10().set_bit());
+
+    if unsafe { REMAINING_US == 0 } {
+        if PLAYING.load(Ordering::Relaxed) {
+            let step = NEXT_STEP.load(Ordering::Relaxed);
+            CURRENT_STEP.store(step, Ordering::Relaxed);
+            STEP_FLAG.store(true, Ordering::Release);
+            // NOTE: We might want to use shift register if running out of GPIO.
+            // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
+            // TODO: Gate length
+            unsafe {
+                let gpioa = &(*pac::GPIOA::ptr());
+                let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
+                let cache = &RT_CACHE[cache_index as usize];
+                // TODO: For now we just use the first track length. We can utilize different length
+                // tracks in the future for polymetric things.
+                let length = cache.lengths[0].min(MAX_STEPS as u8);
+                if length != 0 {
+                    NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
+                    let gate_mask = cache.gate_masks[2];
+                    if gate_mask & (1u16 << step) != 0 {
+                        // rprintln!("step {} is active", step);
+                        gpioa.bsrr().write(|w| w.bs10().set_bit());
+                    } else {
+                        // rprintln!("step {} is not active", step);
+                        gpioa.bsrr().write(|w| w.br10().set_bit());
+                    }
                 }
             }
         }
+
+        unsafe {
+            REMAINING_US = next_interval_us();
+        }
     }
-    ACCUM.store(acc, Ordering::Relaxed);
+
+    unsafe {
+        schedule_next_segment();
+    }
 }
 
 pub fn rebuild_rt_cache(sequencer_state: &SequencerState) {
@@ -293,20 +313,79 @@ fn pulses_per_step_from_ppqn(ppqn: u32) -> Option<u32> {
     }
 }
 
-pub fn set_bpm(timer: &mut CounterHz<TIM3>, bpm: u32) {
+pub fn init_step_timer(tim3: TIM3, clocks: &Clocks) {
+    unsafe {
+        let rcc = &*pac::RCC::ptr();
+        rcc.apb1enr().modify(|_, w| w.tim3en().set_bit());
+        rcc.apb1rstr().modify(|_, w| w.tim3rst().set_bit());
+        rcc.apb1rstr().modify(|_, w| w.tim3rst().clear_bit());
+    }
+
+    tim3.cr1().modify(|_, w| w.cen().clear_bit());
+    let timclk = clocks.timclk1().raw();
+    let prescaler = (timclk / TIMER_HZ).saturating_sub(1);
+    tim3.psc().write(|w| unsafe { w.psc().bits(prescaler as u16) });
+    tim3.arr().write(|w| unsafe { w.arr().bits(0xFFFF) });
+    tim3.cnt().write(|w| unsafe { w.cnt().bits(0) });
+    tim3.egr().write(|w| w.ug().set_bit());
+    tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
+}
+
+pub fn set_bpm(bpm: u32) {
     BPM.store(bpm, Ordering::Relaxed);
     mark_dirty(DIRTY_BPM);
-    let base_hz = 1000;
-    BASE_HZ.store(base_hz, Ordering::Relaxed);
     let ppqn = PPQN.load(Ordering::Relaxed);
-    let threshold = pulses_per_step_from_ppqn(ppqn).map_or(0, |pulses_per_step| {
-        60u32
-            .saturating_mul(base_hz)
-            .saturating_mul(pulses_per_step)
+    let pulses_per_step = pulses_per_step_from_ppqn(ppqn).unwrap_or(1);
+    let denom = bpm.saturating_mul(ppqn).max(1);
+    let numer = 60_000_000u64 * pulses_per_step as u64;
+    let base_us = (numer / denom as u64) as u32;
+    let rem = (numer % denom as u64) as u32;
+
+    cortex_m::interrupt::free(|_| unsafe {
+        STEP_INTERVAL.base_us = base_us.max(1);
+        STEP_INTERVAL.rem = rem;
+        STEP_INTERVAL.denom = denom;
+        STEP_INTERVAL.acc = 0;
+        REMAINING_US = next_interval_us();
+        schedule_next_segment();
+        let tim3 = &*pac::TIM3::ptr();
+        tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
+        tim3.cr1().modify(|_, w| w.cen().set_bit());
     });
-    STEP_THRESHOLD.store(threshold, Ordering::Relaxed);
-    ACCUM.store(0, Ordering::Relaxed);
-    timer.start(base_hz.Hz()).unwrap();
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn next_interval_us() -> u32 {
+    let mut acc = STEP_INTERVAL.acc;
+    let rem = STEP_INTERVAL.rem;
+    let denom = STEP_INTERVAL.denom;
+    let mut extra = 0;
+    if rem != 0 && denom != 0 {
+        acc = acc.wrapping_add(rem);
+        if acc >= denom {
+            acc = acc.wrapping_sub(denom);
+            extra = 1;
+        }
+        STEP_INTERVAL.acc = acc;
+    }
+    STEP_INTERVAL.base_us.saturating_add(extra).max(1)
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn schedule_next_segment() {
+    let mut remaining = REMAINING_US.max(1);
+    let segment = if remaining > MAX_SEGMENT_US {
+        MAX_SEGMENT_US as u16
+    } else {
+        remaining as u16
+    };
+    remaining = remaining.saturating_sub(segment as u32);
+    REMAINING_US = remaining;
+
+    let tim3 = &*pac::TIM3::ptr();
+    let cnt = tim3.cnt().read().cnt().bits();
+    let next = cnt.wrapping_add(segment);
+    tim3.ccr1().write(|w| unsafe { w.ccr().bits(next) });
 }
 
 pub fn select_step(seq: &mut SequencerState, step_index: u8) {

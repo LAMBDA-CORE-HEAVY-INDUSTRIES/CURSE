@@ -11,15 +11,13 @@ use curse::render::{
     render_playhead_marker, render_track_label, CellHighlight,
 };
 use curse::sequencer::{
-    rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM, DIRTY_NOTE_DATA,
-    DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ, STEP_FLAG,
-    PLAYING,
+    init_step_timer, rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM,
+    DIRTY_NOTE_DATA, DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION,
+    SEQ, STEP_FLAG, PLAYING,
 };
 use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
-use rtt_target::rprintln;
-use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 
 #[cfg(feature = "keyboard-input")]
@@ -48,15 +46,13 @@ fn main() -> ! {
             .pb0
             .into_push_pull_output_in_state(hal::gpio::PinState::High);
 
-        let mut timer = dp.TIM3.counter_hz(&clocks);
-
         #[cfg(feature = "perf")]
         init_cycle_counter();
 
         // enable debug in sleep
         unsafe { &*pac::DBGMCU::ptr() }.cr().modify(|_, w| w.dbg_sleep().set_bit());
 
-        timer.listen(Event::Update);
+        init_step_timer(dp.TIM3, &clocks);
         unsafe {
             cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM3);
         }
@@ -86,7 +82,7 @@ fn main() -> ! {
         display.clear_screen(0x00).unwrap();
 
         let sequencer_state = unsafe { &mut *(&raw mut SEQ) };
-        set_bpm(&mut timer, 140);
+        set_bpm(140);
 
         // For testing
         let pattern = &mut sequencer_state.patterns[0];
