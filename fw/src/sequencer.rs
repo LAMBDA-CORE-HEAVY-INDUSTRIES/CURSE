@@ -11,6 +11,11 @@ pub static CURRENT_STEP: AtomicU8 = AtomicU8::new(0);
 pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
 
+#[cfg(feature = "perf")]
+static OVERRUN_MISSED_SEGMENTS: AtomicU32 = AtomicU32::new(0);
+#[cfg(feature = "perf")]
+static OVERRUN_MAX_US: AtomicU32 = AtomicU32::new(0);
+
 const TIMER_HZ: u32 = 1_000_000;
 const MAX_SEGMENT_US: u32 = 0xFFFF;
 
@@ -246,6 +251,8 @@ fn TIM3() {
         let tim3 = &*pac::TIM3::ptr();
         let cnt = tim3.cnt().read().cnt().bits();
         let overrun = cnt.wrapping_sub(LAST_CCR1) as u32;
+        #[cfg(feature = "perf")]
+        update_max_overrun(overrun);
         if REMAINING_US == 0 {
             advance_step_boundary();
         }
@@ -371,6 +378,13 @@ pub fn toggle_playback() -> bool {
     }
 }
 
+#[cfg(feature = "perf")]
+pub fn take_overrun_stats() -> (u32, u32) {
+    let missed_segments = OVERRUN_MISSED_SEGMENTS.swap(0, Ordering::Relaxed);
+    let max_overrun_us = OVERRUN_MAX_US.swap(0, Ordering::Relaxed);
+    (missed_segments, max_overrun_us)
+}
+
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn get_next_step_interval_us() -> u32 {
     // Bresenham-style error accumulator for fractional microsecond intervals.
@@ -387,6 +401,22 @@ unsafe fn get_next_step_interval_us() -> u32 {
         STEP_INTERVAL.acc = acc;
     }
     STEP_INTERVAL.base_us.saturating_add(extra).max(1)
+}
+
+#[cfg(feature = "perf")]
+fn update_max_overrun(overrun_us: u32) {
+    let mut current = OVERRUN_MAX_US.load(Ordering::Relaxed);
+    while overrun_us > current {
+        match OVERRUN_MAX_US.compare_exchange_weak(
+            current,
+            overrun_us,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(value) => current = value,
+        }
+    }
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -435,6 +465,8 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
             break;
         }
         overrun -= seg;
+        #[cfg(feature = "perf")]
+        OVERRUN_MISSED_SEGMENTS.fetch_add(1, Ordering::Relaxed);
         REMAINING_US = remaining.saturating_sub(seg);
         if REMAINING_US == 0 {
             advance_step_boundary();

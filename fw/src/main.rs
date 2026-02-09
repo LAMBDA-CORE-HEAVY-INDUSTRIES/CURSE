@@ -25,6 +25,8 @@ use curse::input::{handle_button_press, key_to_button};
 
 #[cfg(feature = "perf")]
 use curse::perf::{init_cycle_counter, measure_cycles};
+#[cfg(feature = "perf")]
+use curse::sequencer::take_overrun_stats;
 
 #[entry]
 fn main() -> ! {
@@ -140,6 +142,18 @@ fn main() -> ! {
             let dirty = take_dirty();
             let mut dirty_steps: u16 = 0;
             let mut dirty_labels = false;
+
+            #[cfg(feature = "perf")]
+            {
+                let (missed_segments, max_overrun_us) = take_overrun_stats();
+                if missed_segments != 0 || max_overrun_us != 0 {
+                    rtt_target::rprintln!(
+                        "clock overrun: missed_segments={} max_overrun_us={}",
+                        missed_segments,
+                        max_overrun_us
+                    );
+                }
+            }
 
             if dirty & DIRTY_RT_CACHE != 0 {
                 rebuild_rt_cache(&sequencer_state);
