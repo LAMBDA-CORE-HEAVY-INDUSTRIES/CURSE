@@ -12,12 +12,12 @@ pub static STEP_FLAG: AtomicBool = AtomicBool::new(false);
 pub static PLAYING: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "perf")]
-static OVERRUN_MISSED_SEGMENTS: AtomicU32 = AtomicU32::new(0);
+static OVERRUN_MISSED_STEP_SEGMENTS: AtomicU32 = AtomicU32::new(0);
 #[cfg(feature = "perf")]
 static OVERRUN_MAX_US: AtomicU32 = AtomicU32::new(0);
 
 const TIMER_HZ: u32 = 1_000_000;
-const MAX_SEGMENT_US: u32 = 0xFFFF;
+const MAX_STEP_SEGMENT_US: u32 = 0xFFFF;
 
 pub const MAX_TRACKS: usize = 8;
 pub const MAX_STEPS: usize = 16;
@@ -258,7 +258,7 @@ fn TIM3() {
         }
         let overrun_left = catch_up_overrun(overrun);
         let base = cnt.wrapping_sub(overrun_left as u16);
-        schedule_next_segment_from(base);
+        schedule_next_step_segment_from(base);
     }
 }
 
@@ -331,7 +331,7 @@ pub fn set_bpm(bpm: u32) {
             let tim3 = &*pac::TIM3::ptr();
             LAST_CCR1 = tim3.cnt().read().cnt().bits();
             REMAINING_US = get_next_step_interval_us();
-            schedule_next_segment_from(LAST_CCR1);
+            schedule_next_step_segment_from(LAST_CCR1);
             tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
             tim3.cr1().modify(|_, w| w.cen().set_bit());
         }
@@ -348,7 +348,7 @@ pub fn start_playback() {
         tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
         LAST_CCR1 = 0;
         REMAINING_US = get_next_step_interval_us();
-        schedule_next_segment_from(LAST_CCR1);
+        schedule_next_step_segment_from(LAST_CCR1);
         tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
         tim3.cr1().modify(|_, w| w.cen().set_bit());
     });
@@ -380,9 +380,9 @@ pub fn toggle_playback() -> bool {
 
 #[cfg(feature = "perf")]
 pub fn take_overrun_stats() -> (u32, u32) {
-    let missed_segments = OVERRUN_MISSED_SEGMENTS.swap(0, Ordering::Relaxed);
+    let missed_step_segments = OVERRUN_MISSED_STEP_SEGMENTS.swap(0, Ordering::Relaxed);
     let max_overrun_us = OVERRUN_MAX_US.swap(0, Ordering::Relaxed);
-    (missed_segments, max_overrun_us)
+    (missed_step_segments, max_overrun_us)
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -456,8 +456,8 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
             advance_step_boundary();
         }
         let remaining = REMAINING_US.max(1);
-        let seg = if remaining > MAX_SEGMENT_US {
-            MAX_SEGMENT_US
+        let seg = if remaining > MAX_STEP_SEGMENT_US {
+            MAX_STEP_SEGMENT_US
         } else {
             remaining
         };
@@ -466,7 +466,7 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
         }
         overrun -= seg;
         #[cfg(feature = "perf")]
-        OVERRUN_MISSED_SEGMENTS.fetch_add(1, Ordering::Relaxed);
+        OVERRUN_MISSED_STEP_SEGMENTS.fetch_add(1, Ordering::Relaxed);
         REMAINING_US = remaining.saturating_sub(seg);
         if REMAINING_US == 0 {
             advance_step_boundary();
@@ -476,17 +476,17 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn schedule_next_segment_from(base: u16) {
+unsafe fn schedule_next_step_segment_from(base: u16) {
     let mut remaining = REMAINING_US.max(1);
-    let segment = if remaining > MAX_SEGMENT_US {
-        MAX_SEGMENT_US as u16
+    let step_segment = if remaining > MAX_STEP_SEGMENT_US {
+        MAX_STEP_SEGMENT_US as u16
     } else {
         remaining as u16
     };
-    remaining = remaining.saturating_sub(segment as u32);
+    remaining = remaining.saturating_sub(step_segment as u32);
     REMAINING_US = remaining;
 
-    let next = base.wrapping_add(segment);
+    let next = base.wrapping_add(step_segment);
     LAST_CCR1 = next;
     let tim3 = &*pac::TIM3::ptr();
     tim3.ccr1().write(|w| unsafe { w.ccr().bits(next) });
