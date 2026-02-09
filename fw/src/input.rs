@@ -1,8 +1,6 @@
-use core::sync::atomic::Ordering;
-
 use crate::sequencer::{
-    mark_dirty, select_step, set_step, DIRTY_NOTE_DATA, DIRTY_PATTERN, DIRTY_RT_CACHE, PLAYING,
-    SequencerState,
+    mark_dirty, select_step, set_step, toggle_playback, DIRTY_NOTE_DATA,
+    DIRTY_PATTERN, DIRTY_RT_CACHE, SequencerState,
 };
 use crate::utils::iter_bits_u8;
 use rtt_target::rprintln;
@@ -44,11 +42,10 @@ pub fn handle_button_press(button: Button, sequencer_state: &mut SequencerState)
             rprintln!("Selected pattern {}", n);
         }
         Button::Play => {
-            let was_playing = PLAYING.fetch_xor(true, Ordering::Relaxed);
-            rprintln!("{}", if was_playing { "Pause" } else { "Play" });
+            let playing = toggle_playback();
+            rprintln!("{}", if playing { "Play" } else { "Pause" });
         }
         Button::Stop => {
-            PLAYING.store(false, Ordering::Relaxed);
             rprintln!("Stop");
         }
         Button::Note(n) => {

@@ -79,7 +79,6 @@ impl StepInterval {
 static mut STEP_INTERVAL: StepInterval = StepInterval::new();
 static mut REMAINING_US: u32 = 0;
 static mut LAST_CCR1: u16 = 0;
-static mut HAS_LAST_CCR1: bool = false;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
@@ -240,46 +239,19 @@ fn TIM3() {
     unsafe {
         // Clear interrupt flags (compare + update)
         let tim3 = &*pac::TIM3::ptr();
-        tim3.sr()
-            .modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
-    }
-
-    if unsafe { REMAINING_US == 0 } {
-        if PLAYING.load(Ordering::Relaxed) {
-            let step = NEXT_STEP.load(Ordering::Relaxed);
-            CURRENT_STEP.store(step, Ordering::Relaxed);
-            STEP_FLAG.store(true, Ordering::Release);
-            // NOTE: We might want to use shift register if running out of GPIO.
-            // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
-            // TODO: Gate length
-            unsafe {
-                let gpioa = &(*pac::GPIOA::ptr());
-                let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
-                let cache = &RT_CACHE[cache_index as usize];
-                // TODO: For now we just use the first track length. We can utilize different length
-                // tracks in the future for polymetric things.
-                let length = cache.lengths[0].min(MAX_STEPS as u8);
-                if length != 0 {
-                    NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
-                    let gate_mask = cache.gate_masks[2];
-                    if gate_mask & (1u16 << step) != 0 {
-                        // rprintln!("step {} is active", step);
-                        gpioa.bsrr().write(|w| w.bs10().set_bit());
-                    } else {
-                        // rprintln!("step {} is not active", step);
-                        gpioa.bsrr().write(|w| w.br10().set_bit());
-                    }
-                }
-            }
-        }
-
-        unsafe {
-            REMAINING_US = next_interval_us();
-        }
+        tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
     }
 
     unsafe {
-        schedule_next_segment();
+        let tim3 = &*pac::TIM3::ptr();
+        let cnt = tim3.cnt().read().cnt().bits();
+        let overrun = cnt.wrapping_sub(LAST_CCR1) as u32;
+        if REMAINING_US == 0 {
+            advance_step_boundary();
+        }
+        let overrun_left = catch_up_overrun(overrun);
+        let base = cnt.wrapping_sub(overrun_left as u16);
+        schedule_next_segment_from(base);
     }
 }
 
@@ -348,17 +320,60 @@ pub fn set_bpm(bpm: u32) {
         STEP_INTERVAL.rem = rem;
         STEP_INTERVAL.denom = denom;
         STEP_INTERVAL.acc = 0;
-        HAS_LAST_CCR1 = false;
-        REMAINING_US = next_interval_us();
-        schedule_next_segment();
+        if PLAYING.load(Ordering::Relaxed) {
+            let tim3 = &*pac::TIM3::ptr();
+            LAST_CCR1 = tim3.cnt().read().cnt().bits();
+            REMAINING_US = get_next_step_interval_us();
+            schedule_next_segment_from(LAST_CCR1);
+            tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
+            tim3.cr1().modify(|_, w| w.cen().set_bit());
+        }
+    });
+}
+
+pub fn start_playback() {
+    cortex_m::interrupt::free(|_| unsafe {
+        PLAYING.store(true, Ordering::Relaxed);
+        STEP_INTERVAL.acc = 0;
         let tim3 = &*pac::TIM3::ptr();
+        tim3.cr1().modify(|_, w| w.cen().clear_bit());
+        tim3.cnt().write(|w| w.cnt().bits(0));
+        tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
+        LAST_CCR1 = 0;
+        REMAINING_US = get_next_step_interval_us();
+        schedule_next_segment_from(LAST_CCR1);
         tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
         tim3.cr1().modify(|_, w| w.cen().set_bit());
     });
 }
 
+pub fn pause_playback() {
+    cortex_m::interrupt::free(|_| unsafe {
+        PLAYING.store(false, Ordering::Relaxed);
+        // TODO: For now we only force a single gate low; expand to all 8 channels.
+        let gpioa = &(*pac::GPIOA::ptr());
+        gpioa.bsrr().write(|w| w.br10().set_bit());
+        let tim3 = &*pac::TIM3::ptr();
+        tim3.dier().modify(|_, w| w.cc1ie().clear_bit().uie().clear_bit());
+        tim3.cr1().modify(|_, w| w.cen().clear_bit());
+        tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
+        REMAINING_US = 0;
+    });
+}
+
+pub fn toggle_playback() -> bool {
+    if PLAYING.load(Ordering::Relaxed) {
+        pause_playback();
+        false
+    } else {
+        start_playback();
+        true
+    }
+}
+
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn next_interval_us() -> u32 {
+unsafe fn get_next_step_interval_us() -> u32 {
+    // Bresenham-style error accumulator for fractional microsecond intervals.
     let mut acc = STEP_INTERVAL.acc;
     let rem = STEP_INTERVAL.rem;
     let denom = STEP_INTERVAL.denom;
@@ -375,7 +390,61 @@ unsafe fn next_interval_us() -> u32 {
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn schedule_next_segment() {
+unsafe fn advance_step_boundary() {
+    if PLAYING.load(Ordering::Relaxed) {
+        let step = NEXT_STEP.load(Ordering::Relaxed);
+        CURRENT_STEP.store(step, Ordering::Relaxed);
+        STEP_FLAG.store(true, Ordering::Release);
+        // NOTE: We might want to use shift register if running out of GPIO.
+        // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
+        // TODO: Gate length
+        let gpioa = &(*pac::GPIOA::ptr());
+        let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
+        let cache = &RT_CACHE[cache_index as usize];
+        // TODO: For now we just use the first track length. We can utilize different length
+        // tracks in the future for polymetric things.
+        let length = cache.lengths[0].min(MAX_STEPS as u8);
+        if length != 0 {
+            NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
+            let gate_mask = cache.gate_masks[2];
+            if gate_mask & (1u16 << step) != 0 {
+                // rprintln!("step {} is active", step);
+                gpioa.bsrr().write(|w| w.bs10().set_bit());
+            } else {
+                // rprintln!("step {} is not active", step);
+                gpioa.bsrr().write(|w| w.br10().set_bit());
+            }
+        }
+    }
+    REMAINING_US = get_next_step_interval_us();
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
+    while overrun != 0 {
+        if REMAINING_US == 0 {
+            advance_step_boundary();
+        }
+        let remaining = REMAINING_US.max(1);
+        let seg = if remaining > MAX_SEGMENT_US {
+            MAX_SEGMENT_US
+        } else {
+            remaining
+        };
+        if overrun < seg {
+            break;
+        }
+        overrun -= seg;
+        REMAINING_US = remaining.saturating_sub(seg);
+        if REMAINING_US == 0 {
+            advance_step_boundary();
+        }
+    }
+    overrun
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn schedule_next_segment_from(base: u16) {
     let mut remaining = REMAINING_US.max(1);
     let segment = if remaining > MAX_SEGMENT_US {
         MAX_SEGMENT_US as u16
@@ -385,22 +454,9 @@ unsafe fn schedule_next_segment() {
     remaining = remaining.saturating_sub(segment as u32);
     REMAINING_US = remaining;
 
-    let tim3 = &*pac::TIM3::ptr();
-    let cnt = tim3.cnt().read().cnt().bits();
-    let mut last = LAST_CCR1;
-    if !HAS_LAST_CCR1 {
-        last = cnt;
-        HAS_LAST_CCR1 = true;
-    }
-    let seg = segment.max(1) as u32;
-    let elapsed = cnt.wrapping_sub(last) as u32;
-    let mut next = last.wrapping_add(segment);
-    if elapsed >= seg {
-        let missed = (elapsed / seg).saturating_add(1);
-        let add = (seg.saturating_mul(missed)) as u16;
-        next = last.wrapping_add(add);
-    }
+    let next = base.wrapping_add(segment);
     LAST_CCR1 = next;
+    let tim3 = &*pac::TIM3::ptr();
     tim3.ccr1().write(|w| unsafe { w.ccr().bits(next) });
 }
 
