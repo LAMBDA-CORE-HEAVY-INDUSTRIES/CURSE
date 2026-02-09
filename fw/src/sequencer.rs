@@ -78,6 +78,8 @@ impl StepInterval {
 
 static mut STEP_INTERVAL: StepInterval = StepInterval::new();
 static mut REMAINING_US: u32 = 0;
+static mut LAST_CCR1: u16 = 0;
+static mut HAS_LAST_CCR1: bool = false;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
@@ -346,6 +348,7 @@ pub fn set_bpm(bpm: u32) {
         STEP_INTERVAL.rem = rem;
         STEP_INTERVAL.denom = denom;
         STEP_INTERVAL.acc = 0;
+        HAS_LAST_CCR1 = false;
         REMAINING_US = next_interval_us();
         schedule_next_segment();
         let tim3 = &*pac::TIM3::ptr();
@@ -384,7 +387,20 @@ unsafe fn schedule_next_segment() {
 
     let tim3 = &*pac::TIM3::ptr();
     let cnt = tim3.cnt().read().cnt().bits();
-    let next = cnt.wrapping_add(segment);
+    let mut last = LAST_CCR1;
+    if !HAS_LAST_CCR1 {
+        last = cnt;
+        HAS_LAST_CCR1 = true;
+    }
+    let seg = segment.max(1) as u32;
+    let elapsed = cnt.wrapping_sub(last) as u32;
+    let mut next = last.wrapping_add(segment);
+    if elapsed >= seg {
+        let missed = (elapsed / seg).saturating_add(1);
+        let add = (seg.saturating_mul(missed)) as u16;
+        next = last.wrapping_add(add);
+    }
+    LAST_CCR1 = next;
     tim3.ccr1().write(|w| unsafe { w.ccr().bits(next) });
 }
 
