@@ -11,15 +11,13 @@ use curse::render::{
     render_playhead_marker, render_track_label, CellHighlight,
 };
 use curse::sequencer::{
-    rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM, DIRTY_NOTE_DATA,
-    DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION, SEQ, STEP_FLAG,
-    PLAYING,
+    init_step_timer, rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM,
+    DIRTY_NOTE_DATA, DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION,
+    SEQ, STEP_FLAG, PLAYING,
 };
 use curse::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
-use rtt_target::rprintln;
-use stm32f4xx_hal::timer::Event;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 
 #[cfg(feature = "keyboard-input")]
@@ -27,6 +25,8 @@ use curse::input::{handle_button_press, key_to_button};
 
 #[cfg(feature = "perf")]
 use curse::perf::{init_cycle_counter, measure_cycles};
+#[cfg(feature = "perf")]
+use curse::sequencer::take_overrun_stats;
 
 #[entry]
 fn main() -> ! {
@@ -48,15 +48,13 @@ fn main() -> ! {
             .pb0
             .into_push_pull_output_in_state(hal::gpio::PinState::High);
 
-        let mut timer = dp.TIM3.counter_hz(&clocks);
-
         #[cfg(feature = "perf")]
         init_cycle_counter();
 
         // enable debug in sleep
         unsafe { &*pac::DBGMCU::ptr() }.cr().modify(|_, w| w.dbg_sleep().set_bit());
 
-        timer.listen(Event::Update);
+        init_step_timer(dp.TIM3, &clocks);
         unsafe {
             cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM3);
         }
@@ -86,7 +84,7 @@ fn main() -> ! {
         display.clear_screen(0x00).unwrap();
 
         let sequencer_state = unsafe { &mut *(&raw mut SEQ) };
-        set_bpm(&mut timer, 140);
+        set_bpm(140);
 
         // For testing
         let pattern = &mut sequencer_state.patterns[0];
@@ -144,6 +142,18 @@ fn main() -> ! {
             let dirty = take_dirty();
             let mut dirty_steps: u16 = 0;
             let mut dirty_labels = false;
+
+            #[cfg(feature = "perf")]
+            {
+                let (missed_segments, max_overrun_us) = take_overrun_stats();
+                if missed_segments != 0 || max_overrun_us != 0 {
+                    rtt_target::rprintln!(
+                        "clock overrun: missed_segments={} max_overrun_us={}",
+                        missed_segments,
+                        max_overrun_us
+                    );
+                }
+            }
 
             if dirty & DIRTY_RT_CACHE != 0 {
                 rebuild_rt_cache(&sequencer_state);
