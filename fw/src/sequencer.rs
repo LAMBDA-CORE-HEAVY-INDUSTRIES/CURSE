@@ -23,6 +23,10 @@ pub const MAX_TRACKS: usize = 8;
 pub const MAX_STEPS: usize = 16;
 pub const MAX_PATTERNS: usize = 16;
 pub const MAX_SONG_LENGTH: usize = 64;
+pub const MAX_GATE_LENGTH: u8 = 100; // Percent of step length.
+pub const DEFAULT_GATE_LENGTH: u8 = 100; // Full step.
+
+const GATE_TRACK_INDEX: usize = 2;
 
 pub static mut SEQ: SequencerState = SequencerState::new();
 
@@ -46,7 +50,7 @@ pub struct RtCache {
     pub gate_masks: [u16; MAX_TRACKS],
     pub pitches: [[u8; MAX_STEPS]; MAX_TRACKS],
     pub lengths: [u8; MAX_TRACKS],
-    pub gate_lengths: [u8; MAX_TRACKS],
+    pub gate_lengths: [[u8; MAX_STEPS]; MAX_TRACKS],
 }
 
 impl RtCache {
@@ -55,7 +59,7 @@ impl RtCache {
             gate_masks: [0; MAX_TRACKS],
             pitches: [[0; MAX_STEPS]; MAX_TRACKS],
             lengths: [0; MAX_TRACKS],
-            gate_lengths: [0; MAX_TRACKS],
+            gate_lengths: [[0; MAX_STEPS]; MAX_TRACKS],
         }
     }
 }
@@ -84,16 +88,24 @@ impl StepInterval {
 static mut STEP_INTERVAL: StepInterval = StepInterval::new();
 static mut REMAINING_US: u32 = 0;
 static mut LAST_CCR1: u16 = 0;
+static mut STEP_US: u32 = 0;
+static mut STEP_GATE_LEN_US: [u32; MAX_TRACKS] = [0; MAX_TRACKS];
+static mut STEP_GATE_ACTIVE: [bool; MAX_TRACKS] = [false; MAX_TRACKS];
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Step {
     pub active: bool,
     pub pitch: u8,
+    pub gate_len: u8,
 }
 
 impl Step {
     pub const fn new() -> Self {
-        Self { active: false, pitch: 0 }
+        Self {
+            active: false,
+            pitch: 0,
+            gate_len: DEFAULT_GATE_LENGTH,
+        }
     }
 
     pub fn as_str(&self) -> &'static str {
@@ -253,9 +265,11 @@ fn TIM3() {
         let overrun = cnt.wrapping_sub(LAST_CCR1) as u32;
         #[cfg(feature = "perf")]
         update_max_overrun(overrun);
+
         if REMAINING_US == 0 {
             advance_step_boundary();
         }
+        update_gate_outputs(step_elapsed_us());
         let overrun_left = catch_up_overrun(overrun);
         let base = cnt.wrapping_sub(overrun_left as u16);
         schedule_next_step_segment_from(base);
@@ -270,13 +284,12 @@ pub fn rebuild_rt_cache(sequencer_state: &SequencerState) {
     for track_index in 0..MAX_TRACKS {
         let track = &pattern.tracks[track_index];
         cache.lengths[track_index] = track.length;
-        // Placeholder for future per-track gate length control.
-        cache.gate_lengths[track_index] = 1;
 
         let mut mask: u16 = 0;
         for step_index in 0..MAX_STEPS {
             let step = track.steps[step_index];
             cache.pitches[track_index][step_index] = step.pitch;
+            cache.gate_lengths[track_index][step_index] = step.gate_len;
             if step.active {
                 mask |= 1u16 << step_index;
             }
@@ -330,7 +343,13 @@ pub fn set_bpm(bpm: u32) {
         if PLAYING.load(Ordering::Relaxed) {
             let tim3 = &*pac::TIM3::ptr();
             LAST_CCR1 = tim3.cnt().read().cnt().bits();
-            REMAINING_US = get_next_step_interval_us();
+            let step_us = get_next_step_interval_us();
+            STEP_US = step_us;
+            REMAINING_US = step_us;
+            let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
+            let cache = &RT_CACHE[cache_index as usize];
+            let step = CURRENT_STEP.load(Ordering::Relaxed);
+            configure_gates_for_step(step, cache, step_us);
             schedule_next_step_segment_from(LAST_CCR1);
             tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
             tim3.cr1().modify(|_, w| w.cen().set_bit());
@@ -347,7 +366,10 @@ pub fn start_playback() {
         tim3.cnt().write(|w| w.cnt().bits(0));
         tim3.sr().modify(|_, w| w.cc1if().clear_bit().uif().clear_bit());
         LAST_CCR1 = 0;
-        REMAINING_US = get_next_step_interval_us();
+        clear_gate_state();
+        let step_us = get_next_step_interval_us();
+        STEP_US = step_us;
+        REMAINING_US = step_us;
         schedule_next_step_segment_from(LAST_CCR1);
         tim3.dier().modify(|_, w| w.cc1ie().set_bit().uie().clear_bit());
         tim3.cr1().modify(|_, w| w.cen().set_bit());
@@ -358,8 +380,7 @@ pub fn pause_playback() {
     cortex_m::interrupt::free(|_| unsafe {
         PLAYING.store(false, Ordering::Relaxed);
         // TODO: For now we only force a single gate low; expand to all 8 channels.
-        let gpioa = &(*pac::GPIOA::ptr());
-        gpioa.bsrr().write(|w| w.br10().set_bit());
+        clear_gate_state();
         let tim3 = &*pac::TIM3::ptr();
         tim3.dier().modify(|_, w| w.cc1ie().clear_bit().uie().clear_bit());
         tim3.cr1().modify(|_, w| w.cen().clear_bit());
@@ -403,6 +424,128 @@ unsafe fn get_next_step_interval_us() -> u32 {
     STEP_INTERVAL.base_us.saturating_add(extra).max(1)
 }
 
+#[inline]
+fn clamp_gate_len(gate_len: u8) -> u8 {
+    if gate_len > MAX_GATE_LENGTH {
+        MAX_GATE_LENGTH
+    } else {
+        gate_len
+    }
+}
+
+#[inline]
+fn gate_len_to_us(step_us: u32, gate_len: u8) -> u32 {
+    if gate_len == 0 || step_us == 0 {
+        return 0;
+    }
+    let gate_len = clamp_gate_len(gate_len) as u64;
+    let step_us = step_us as u64;
+    let mut us = (step_us * gate_len) / (MAX_GATE_LENGTH as u64);
+    if us == 0 {
+        us = 1;
+    }
+    if us > step_us {
+        us = step_us;
+    }
+    us as u32
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn gate_set_high(track_index: usize) {
+    if track_index == GATE_TRACK_INDEX {
+        let gpioa = &*pac::GPIOA::ptr();
+        gpioa.bsrr().write(|w| w.bs10().set_bit());
+    } else {
+        // TODO: Add per-track GPIO mapping.
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn gate_set_low(track_index: usize) {
+    if track_index == GATE_TRACK_INDEX {
+        let gpioa = &*pac::GPIOA::ptr();
+        gpioa.bsrr().write(|w| w.br10().set_bit());
+    } else {
+        // TODO: Add per-track GPIO mapping.
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn clear_gate_state() {
+    for track_index in 0..MAX_TRACKS {
+        STEP_GATE_LEN_US[track_index] = 0;
+        STEP_GATE_ACTIVE[track_index] = false;
+        gate_set_low(track_index);
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn configure_gates_for_step(step: u8, cache: &RtCache, step_us: u32) {
+    let step_bit = 1u16 << step;
+    for track_index in 0..MAX_TRACKS {
+        let active = (cache.gate_masks[track_index] & step_bit) != 0;
+        STEP_GATE_ACTIVE[track_index] = active;
+        if active {
+            let gate_len = clamp_gate_len(cache.gate_lengths[track_index][step as usize]);
+            let gate_len_us = gate_len_to_us(step_us, gate_len);
+            STEP_GATE_LEN_US[track_index] = gate_len_us;
+        } else {
+            STEP_GATE_LEN_US[track_index] = 0;
+        }
+    }
+    update_gate_outputs(0);
+}
+
+#[inline]
+fn step_elapsed_us() -> u32 {
+    let step_us = unsafe { STEP_US.max(1) };
+    let remaining = unsafe { REMAINING_US };
+    step_us.saturating_sub(remaining.min(step_us))
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn update_gate_outputs(elapsed_us: u32) {
+    for track_index in 0..MAX_TRACKS {
+        if !STEP_GATE_ACTIVE[track_index] {
+            gate_set_low(track_index);
+            continue;
+        }
+        let gate_len_us = STEP_GATE_LEN_US[track_index];
+        if gate_len_us == 0 {
+            gate_set_low(track_index);
+            continue;
+        }
+        if elapsed_us < gate_len_us {
+            gate_set_high(track_index);
+        } else {
+            gate_set_low(track_index);
+        }
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn time_until_gate_change(elapsed_us: u32, step_us: u32) -> u32 {
+    let mut min = u32::MAX;
+    for track_index in 0..MAX_TRACKS {
+        if !STEP_GATE_ACTIVE[track_index] {
+            continue;
+        }
+        let gate_len_us = STEP_GATE_LEN_US[track_index];
+        if gate_len_us == 0 {
+            continue;
+        }
+        let next = if elapsed_us < gate_len_us {
+            gate_len_us - elapsed_us
+        } else {
+            continue;
+        };
+        if next != 0 && next <= step_us && next < min {
+            min = next;
+        }
+    }
+    if min == u32::MAX { 0 } else { min }
+}
+
 #[cfg(feature = "perf")]
 fn update_max_overrun(overrun_us: u32) {
     let mut current = OVERRUN_MAX_US.load(Ordering::Relaxed);
@@ -421,14 +564,12 @@ fn update_max_overrun(overrun_us: u32) {
 
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn advance_step_boundary() {
+    let step_us = get_next_step_interval_us();
+    STEP_US = step_us;
     if PLAYING.load(Ordering::Relaxed) {
         let step = NEXT_STEP.load(Ordering::Relaxed);
         CURRENT_STEP.store(step, Ordering::Relaxed);
         STEP_FLAG.store(true, Ordering::Release);
-        // NOTE: We might want to use shift register if running out of GPIO.
-        // TODO: Iterate all tracks and set gpio low/high if active. Now just checking for track 3.
-        // TODO: Gate length
-        let gpioa = &(*pac::GPIOA::ptr());
         let cache_index = ACTIVE_CACHE.load(Ordering::Acquire);
         let cache = &RT_CACHE[cache_index as usize];
         // TODO: For now we just use the first track length. We can utilize different length
@@ -436,17 +577,12 @@ unsafe fn advance_step_boundary() {
         let length = cache.lengths[0].min(MAX_STEPS as u8);
         if length != 0 {
             NEXT_STEP.store((step + 1) % length, Ordering::Relaxed);
-            let gate_mask = cache.gate_masks[2];
-            if gate_mask & (1u16 << step) != 0 {
-                // rprintln!("step {} is active", step);
-                gpioa.bsrr().write(|w| w.bs10().set_bit());
-            } else {
-                // rprintln!("step {} is not active", step);
-                gpioa.bsrr().write(|w| w.br10().set_bit());
-            }
+            configure_gates_for_step(step, cache, step_us);
+        } else {
+            clear_gate_state();
         }
     }
-    REMAINING_US = get_next_step_interval_us();
+    REMAINING_US = step_us;
 }
 
 #[allow(unsafe_op_in_unsafe_fn)]
@@ -456,11 +592,16 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
             advance_step_boundary();
         }
         let remaining = REMAINING_US.max(1);
-        let seg = if remaining > MAX_STEP_SEGMENT_US {
-            MAX_STEP_SEGMENT_US
-        } else {
-            remaining
-        };
+        let step_us = STEP_US.max(1);
+        let elapsed = step_elapsed_us();
+        let mut seg = remaining;
+        let gate_next = time_until_gate_change(elapsed, step_us);
+        if gate_next != 0 {
+            seg = seg.min(gate_next);
+        }
+        if seg > MAX_STEP_SEGMENT_US {
+            seg = MAX_STEP_SEGMENT_US;
+        }
         if overrun < seg {
             break;
         }
@@ -470,6 +611,8 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
         REMAINING_US = remaining.saturating_sub(seg);
         if REMAINING_US == 0 {
             advance_step_boundary();
+        } else {
+            update_gate_outputs(step_elapsed_us());
         }
     }
     overrun
@@ -478,11 +621,17 @@ unsafe fn catch_up_overrun(mut overrun: u32) -> u32 {
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn schedule_next_step_segment_from(base: u16) {
     let mut remaining = REMAINING_US.max(1);
-    let step_segment = if remaining > MAX_STEP_SEGMENT_US {
-        MAX_STEP_SEGMENT_US as u16
-    } else {
-        remaining as u16
-    };
+    let mut step_segment = remaining;
+    let step_us = STEP_US.max(1);
+    let elapsed = step_elapsed_us();
+    let gate_next = time_until_gate_change(elapsed, step_us);
+    if gate_next != 0 {
+        step_segment = step_segment.min(gate_next);
+    }
+    if step_segment > MAX_STEP_SEGMENT_US {
+        step_segment = MAX_STEP_SEGMENT_US;
+    }
+    let step_segment = step_segment as u16;
     remaining = remaining.saturating_sub(step_segment as u32);
     REMAINING_US = remaining;
 
