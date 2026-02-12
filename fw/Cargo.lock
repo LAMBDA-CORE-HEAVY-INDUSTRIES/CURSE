@@ -63,21 +63,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
-name = "curse"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "embedded-hal 1.0.0",
- "embedded-hal-bus",
- "lt7683",
- "nb 1.1.0",
- "panic-halt",
- "rtt-target",
- "stm32f4xx-hal",
-]
-
-[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -206,6 +191,8 @@ checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 [[package]]
 name = "lt7683"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0ef28cf29937d0e43eea0a5dbeb10a7ae64939d2c5cada42a2a091c6d7c12ce"
 dependencies = [
  "embedded-hal 1.0.0",
 ]
@@ -307,6 +294,21 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
+
+[[package]]
+name = "seq_08"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "embedded-hal 1.0.0",
+ "embedded-hal-bus",
+ "lt7683",
+ "nb 1.1.0",
+ "panic-halt",
+ "rtt-target",
+ "stm32f4xx-hal",
+]
 
 [[package]]
 name = "stable_deref_trait"

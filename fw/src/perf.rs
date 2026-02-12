@@ -8,7 +8,7 @@ use cortex_m::peripheral::DWT;
 ///
 /// Example:
 /// ```rust,no_run
-/// # use curse::perf;
+/// # use seq_08::perf;
 /// # fn rebuild_rt_cache() {}
 /// #[cfg(feature = "perf")]
 /// perf::init_cycle_counter();

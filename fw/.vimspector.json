@@ -17,7 +17,7 @@
                 "coreConfigs": [
                     {
                         "cwd": "${workspaceRoot}",
-                        "programBinary": "${workspaceRoot}/target/thumbv7em-none-eabihf/debug/curse"
+                        "programBinary": "${workspaceRoot}/target/thumbv7em-none-eabihf/debug/seq_08"
                     }
                 ]
             }

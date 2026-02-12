@@ -1,5 +1,5 @@
 [package]
-name = "curse"
+name = "seq_08"
 version = "0.1.0"
 edition = "2024"
 
@@ -28,7 +28,7 @@ panic="abort"
 opt-level = 0
 
 [[bin]]
-name = "curse"
+name = "seq_08"
 path = "src/main.rs"
 test = false
 bench = false

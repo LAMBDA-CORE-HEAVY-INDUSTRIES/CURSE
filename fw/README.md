@@ -18,7 +18,7 @@ If things go wrong and you can't flash the firmware, hold and release reset butt
   --chip STM32F411RETx \
   --protocol SWD \
   --connect-under-reset \
-  target/thumbv7em-none-eabihf/debug/curse
+  target/thumbv7em-none-eabihf/debug/seq_08
 ```
 
 ## Logging
@@ -29,17 +29,17 @@ If things go wrong and you can't flash the firmware, hold and release reset butt
 ## Profiling (cycle counts)
 
 - Enable the `perf` feature: `cargo run --features perf` (or `cargo embed --features perf`)
-- Initialize once early in startup: `curse::perf::init_cycle_counter();`
-- Measure any code block: `let cycles = curse::perf::measure_cycles(|| { /* ... */ });`
+- Initialize once early in startup: `seq_08::perf::init_cycle_counter();`
+- Measure any code block: `let cycles = seq_08::perf::measure_cycles(|| { /* ... */ });`
 - Print with `rprintln!` if you want the number over RTT.
   Example:
   ```rust
   // Build with: cargo run --features perf
   #[cfg(feature = "perf")]
-  curse::perf::init_cycle_counter();
+  seq_08::perf::init_cycle_counter();
   #[cfg(feature = "perf")]
   {
-      let cycles = curse::perf::measure_cycles(|| {
+      let cycles = seq_08::perf::measure_cycles(|| {
           rebuild_rt_cache(&sequencer_state);
       });
       rtt_target::rprintln!("{}", cycles);

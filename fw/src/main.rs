@@ -6,27 +6,27 @@ use core::sync::atomic::Ordering;
 
 use crate::hal::{pac, prelude::*};
 use cortex_m_rt::entry;
-use curse::render::{
+use seq_08::render::{
     render, render_bpm, render_cells, render_column, render_pattern_indicator,
     render_playhead_marker, render_track_label, CellHighlight,
 };
-use curse::sequencer::{
+use seq_08::sequencer::{
     init_step_timer, rebuild_rt_cache, set_bpm, take_dirty, CURRENT_STEP, DIRTY_BPM,
     DIRTY_NOTE_DATA, DIRTY_PATTERN, DIRTY_RT_CACHE, DIRTY_STEP_SELECTION, DIRTY_TRACK_SELECTION,
     SEQ, STEP_FLAG, PLAYING,
 };
-use curse::utils::{iter_bits_u8, iter_bits_u16};
+use seq_08::utils::{iter_bits_u8, iter_bits_u16};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use panic_halt as _;
 use stm32f4xx_hal::{self as hal, spi::Spi};
 
 #[cfg(feature = "keyboard-input")]
-use curse::input::{handle_button_press, key_to_button};
+use seq_08::input::{handle_button_press, key_to_button};
 
 #[cfg(feature = "perf")]
-use curse::perf::{init_cycle_counter, measure_cycles};
+use seq_08::perf::{init_cycle_counter, measure_cycles};
 #[cfg(feature = "perf")]
-use curse::sequencer::take_overrun_stats;
+use seq_08::sequencer::take_overrun_stats;
 
 #[entry]
 fn main() -> ! {
