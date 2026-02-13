@@ -1,0 +1,20 @@
+- ratcheting
+- reverse playback
+- multiple patterns
+- cv output
+- gate output
+- probabilities
+    - gate
+    - ratcheting
+    - pitch range?
+- song mode pattern order
+- saving/loading songs/patterns
+- settings menu
+- multiple views?
+    - view selected tracks patterns in one view
+- multiselection of tracks
+    - highlight all selected tracks
+    - perform operations on all selected tracks at the same time
+- multiselection of steps
+    - highlight all selected steps
+    - perform operations on all selected steps at the same time
